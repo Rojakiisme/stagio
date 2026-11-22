@@ -9,131 +9,294 @@
   <link rel="icon" type="image/png" href="icons/favicon.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="site.css">
-  <script src="lang.js"></script>
+  <script src="prefs.js"></script>
+  <script src="site.js" defer></script>
 </head>
 <body>
-  <header class="top">
-    <img src="icons/icon-192.png" alt="" width="40" height="40">
-    <div>
-      <h1>Stagio</h1>
-      <p class="dim"><span class="zh">一个人掌控投影片、音乐和投影输出</span><span class="en">One person runs slides, music and the projector</span></p>
+  <header class="site-head">
+    <div class="wrap head-row">
+      <a class="brand" href="./"><img src="icons/icon-192.png" alt="" width="28" height="28">Stagio</a>
+      <nav class="topnav" aria-label="Site">
+        <a class="in-page" href="#features"><span class="zh">功能</span><span class="en">Features</span></a>
+        <a href="#download"><span class="zh">下载</span><span class="en">Download</span></a>
+        <a class="in-page" href="#install"><span class="zh">安装</span><span class="en">Install</span></a>
+        <span class="sep"></span>
+        <a href="guide/" data-guide="guide/"><span class="zh">使用说明</span><span class="en">Guide</span></a>
+        <a class="ext" href="https://github.com/Rojakiisme/stagio">GitHub</a>
+        <button class="langbtn" type="button" data-lang-toggle>English</button>
+      </nav>
     </div>
-    <nav class="topnav">
-      <a href="./" aria-current="page"><span class="zh">下载</span><span class="en">Download</span></a>
-      <a href="guide/" data-guide="guide/"><span class="zh">使用说明</span><span class="en">Guide</span></a>
-      <button class="langbtn" type="button" data-lang-toggle>English</button>
-    </nav>
   </header>
 
   <main>
-    <p class="pick">
-      <span class="zh">选一个适合你的版本：<b>自己讲 → Lite</b> · <b>在后面控投影和音乐 → Standard</b> · <b>负责整场活动 → Extra</b></span>
-      <span class="en">Pick the one that fits: <b>presenting your own slides → Lite</b> · <b>running slides and music from the back → Standard</b> · <b>running the whole event → Extra</b></span>
-    </p>
-
-    <!-- Fixed links: the "downloads" release always holds each edition's newest files. -->
-    <section class="cards three">
-      <article class="card">
-        <div class="card-h"><h2>Stagio Lite</h2><span class="tag">Beta 1.3.1</span></div>
-        <p><span class="zh">给自己讲投影片的人：讲员、老师、做报告的人。</span><span class="en">For people presenting their own slides: speakers, teachers, anyone giving a talk.</span></p>
-        <ul>
-          <li><span class="zh">手机当翻页器，看到当前页、下一页、备注和计时</span><span class="en">Your phone as the clicker, with the current and next slide, notes and timers</span></li>
-          <li><span class="zh">黑屏/白屏、投影上的真实画面、开场前检查</span><span class="en">Black and white screen, the real projector picture, a pre-event check</span></li>
-          <li><span class="zh">投影模式（复制/延伸）和音量，放投影片里的影片也方便</span><span class="en">Projector mode (duplicate / extend) and the volume, for videos in your slides</span></li>
-          <li><span class="zh">只要打开文件、手机扫码，就能开始</span><span class="en">Open the file, scan the code, go</span></li>
-        </ul>
-        <div class="dl">
-          <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Setup-Windows.exe">Windows</a>
-          <div class="two">
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Mac-AppleSilicon.dmg">Mac · Apple silicon</a>
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Mac-Intel.dmg">Mac · Intel</a>
-          </div>
-        </div>
-      </article>
-
-      <article class="card main">
-        <div class="card-h"><h2>Stagio Standard</h2><span class="tag">Beta 1.4.1</span></div>
-        <p><span class="zh">一个人在后面控投影片、音乐和投影输出。</span><span class="en">One person running slides, music and the projector.</span></p>
-        <ul>
-          <li><span class="zh">Lite 的全部，加上：</span><span class="en">Everything in Lite, plus:</span></li>
-          <li><span class="zh">任何播放程序的音乐（音乐 App、媒体播放器、浏览器），平滑淡入淡出到指定音量</span><span class="en">Music from any player (a music app, a media player, a browser), smooth fades to any level</span></li>
-          <li><span class="zh">音响/耳机切换、系统音量、投影模式</span><span class="en">Audio device, system volume, projector mode</span></li>
-          <li><span class="zh">耳机预听（Windows）：其他程序只在耳机里，观众听不到</span><span class="en">Headphone preview (Windows): other apps only in your headphones, not in the room</span></li>
-          <li><span class="zh">混音（Windows）：麦克风直出喇叭（含 EQ），推子和音量表，讲话时音乐自动降低</span><span class="en">Mixer (Windows): mic to the speakers with EQ, faders and meters, music dips while someone speaks</span></li>
-          <li><span class="zh">开场倒数：投影上全屏倒数，到点音乐淡出</span><span class="en">Opening countdown on the projector, music fading out at zero</span></li>
-          <li><span class="zh">Cue：一个按钮执行一串动作，或翻到某一页自动执行</span><span class="en">Cues: one button for a sequence of steps, or automatically at a slide</span></li>
-        </ul>
-        <div class="dl">
-          <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Setup-Windows.exe">Windows</a>
-          <div class="two">
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Mac-AppleSilicon.dmg">Mac · Apple silicon</a>
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Mac-Intel.dmg">Mac · Intel</a>
-          </div>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card-h"><h2>Stagio Extra</h2><span class="tag">Beta 1.5.1</span></div>
-        <p><span class="zh">负责整场活动的人。</span><span class="en">For whoever runs the whole event.</span></p>
-        <ul>
-          <li><span class="zh">Standard 的全部，加上：</span><span class="en">Everything in Standard, plus:</span></li>
-          <li><span class="zh">节目流程：按一下就切到下一段的文件、音乐和画面</span><span class="en">Run of show: one press goes to the next part's file, music and screen</span></li>
-          <li><span class="zh">投影机上的开场倒数，到点音乐淡出、自动开始</span><span class="en">Opening countdown on the projector; the music fades out and the event starts at zero</span></li>
-          <li><span class="zh">每段剩多少时间、整场快了或慢了多少</span><span class="en">Time left in each part, and how far ahead or behind the event is</span></li>
-          <li><span class="zh">讲台提示屏：讲员的手机/平板看到这一页、下一页、备注和剩余时间，还能收到你发的讯息</span><span class="en">Stage display: the speaker's phone or tablet shows this slide, the next, the notes and the time left, and your messages</span></li>
-          <li><span class="zh">完整的耳机预听：选喇叭设备、逐个程序指定、Cue 里开关</span><span class="en">Full headphone preview: pick the speakers, set each app, switch it in cues</span></li>
-          <li><span class="zh">完整混音：AUX 输出、麦克风 EQ 和噪声门、混音场景（可用 Cue 调出）</span><span class="en">Full mixer: AUX output, microphone EQ and gate, mixer scenes (recalled from cues)</span></li>
-        </ul>
-        <div class="dl">
-          <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Setup-Windows.exe">Windows</a>
-          <div class="two">
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Mac-AppleSilicon.dmg">Mac · Apple silicon</a>
-            <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Mac-Intel.dmg">Mac · Intel</a>
-          </div>
-        </div>
-      </article>
+    <section class="hero wrap">
+      <p class="status" aria-hidden="true"><span class="live">PPT <b>LIVE 3/6</b></span><span>MUSIC <b>PLAYING</b></span><span>LINK <b>OK</b></span></p>
+      <h1><span class="zh">一个人，掌控投影片、音乐和投影。</span><span class="en">One person runs the slides, the music and the projector.</span></h1>
+      <p class="lead"><span class="zh">Stagio 把 PowerPoint、音乐播放程序和投影集中在一个控台上。坐在电脑前操作，或拿着手机当遥控器走动都可以。</span><span class="en">Stagio puts PowerPoint, your music player and the projector on one console. Run the event from the computer, or walk around with your phone as the remote.</span></p>
+      <div class="actions">
+        <a class="btn primary big for-win" href="#download" data-set-os="win"><span class="zh">下载 Windows 版</span><span class="en">Download for Windows</span></a>
+        <a class="btn big for-mac" href="#download" data-set-os="mac"><span class="zh">下载 Mac 版</span><span class="en">Download for Mac</span> <small><span class="zh">测试版</span><span class="en">test version</span></small></a>
+      </div>
+      <p class="meta"><span class="zh">免费、开源 · 不用账号，不上云端 · 配合你现有的 PowerPoint · <a href="guide/" data-guide="guide/" data-hash="#video">看 1 分 47 秒的介绍视频</a></span><span class="en">Free and open source · no account, nothing in the cloud · works with the PowerPoint you have · <a href="guide/" data-guide="guide/" data-hash="#video">Watch the 1:47 video</a></span></p>
+      <figure class="hero-shot">
+        <img class="pc" src="guide/img/console.png" width="1920" height="1080" alt="Stagio Extra during an event: the slide on the projector and the next one, notes, music with fades, the run of show along the top and cues along the bottom">
+        <img class="ph" src="guide/img/phone.png" width="488" height="1055" alt="The same console on a phone">
+      </figure>
     </section>
 
-    <section class="cards notes">
-      <article class="card">
-        <div class="card-h"><h2>Windows</h2></div>
-        <ul>
-          <li><span class="zh">Windows 10 / 11、PowerPoint 2016 或 Microsoft 365；放音乐用你平常用的播放程序（Standard 和 Extra）</span><span class="en">Windows 10 / 11, PowerPoint 2016 or Microsoft 365; for music, any player you already use (Standard and Extra)</span></li>
-          <li><span class="zh">如出现“Windows 已保护你的电脑”：点“更多信息 → 仍要运行”（安装程序没有代码签名）。</span><span class="en">If Windows says "Windows protected your PC": More info → Run anyway (the installer is not code-signed).</span></li>
-          <li><span class="zh">双击后没反应或提示无法访问：防毒软件还在检查新文件，等几分钟再双击。</span><span class="en">Nothing happens, or "can't access": antivirus software is still checking the new file; try again in a few minutes.</span></li>
-          <li><span class="zh">Stagio 以前叫 OneDesk。已经装了 OneDesk：装同一个版本的 Stagio（例如 OneDesk Extra → Stagio Extra）就会直接升级，设置、PIN、Cue 都保留；0.x 的 OneDesk 装 Standard。</span><span class="en">Stagio used to be called OneDesk. With OneDesk installed, install the same edition of Stagio (OneDesk Extra → Stagio Extra): it updates it and keeps the settings, PIN and cues. OneDesk 0.x: install Standard.</span></li>
-          <li><span class="zh">三个版本可以都装，资料共用（设置、PIN、Cue），同一时间开一个。</span><span class="en">All three can be installed; they share settings, PIN and cues, and one runs at a time.</span></li>
-        </ul>
-      </article>
+    <section class="band" id="features">
+      <div class="wrap">
+        <p class="label"><span class="zh">功能</span><span class="en">What it does</span></p>
+        <h2 class="sec-h"><span class="zh">整场活动，一个控台</span><span class="en">One console for the whole event</span></h2>
+        <p class="sec-lead"><span class="zh">每个版本只显示自己有的功能，用不到的不会出现，也不用设定。</span><span class="en">Each edition shows only what it has, so there is nothing to set up that you won't use.</span></p>
+        <div class="features">
+          <article class="feat">
+            <div class="media"><img src="img/feat-slides.png" width="1182" height="739" alt="Program, preview, notes, the slide buttons and every slide" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">投影片</span><span class="en">Slides</span></h3>
+              <p><span class="zh">投影上真正的画面、下一页、备注和计时。一下就黑屏、白屏或跳到任一页；拖一下就能调整顺序。</span><span class="en">What the projector really shows, the next slide, notes and timers. Black, white or any slide in one press; drag a slide to move it.</span></p>
+              <div class="eds"><span class="tag"><span class="zh">所有版本</span><span class="en">All editions</span></span></div>
+            </div>
+          </article>
+          <article class="feat">
+            <div class="media phones"><img src="guide/img/phone.png" width="488" height="1055" alt="Stagio on a phone" loading="lazy"><img src="guide/img/phone-music.png" width="488" height="1055" alt="Music on the phone" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">手机遥控</span><span class="en">Phone remote</span></h3>
+              <p><span class="zh">扫一下二维码，手机就是控台，翻页按钮一直在手边。不用装 App。</span><span class="en">Scan the code and your phone is the console, with the slide buttons always in reach. No app to install.</span></p>
+              <div class="eds"><span class="tag"><span class="zh">所有版本</span><span class="en">All editions</span></span></div>
+            </div>
+          </article>
+          <article class="feat">
+            <div class="media"><img src="img/feat-music.png" width="708" height="410" alt="Music: the track, play and skip, level, fade out, fade in, fade from one level to another" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">音乐和淡入淡出</span><span class="en">Music and fades</span></h3>
+              <p><span class="zh">控制你本来就在用的播放程序：播放、暂停，平滑地淡出、淡入或淡到任一音量。</span><span class="en">Plays, pauses and fades the player you already use: smoothly out, in, or to any level.</span></p>
+              <div class="eds"><span class="tag">Standard · Extra</span></div>
+            </div>
+          </article>
+          <article class="feat">
+            <div class="media"><img src="guide/img/mixer.png" width="677" height="342" alt="The mixer: microphone live, faders and meters for the mic, music, slide videos and master" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">混音</span><span class="en">Mixer</span></h3>
+              <p><span class="zh">没有音响系统？麦克风经过 EQ 直接送到喇叭，每个声音来源都有推子和音量表，有人讲话时音乐自动降低。</span><span class="en">No PA? The microphone goes to the speakers with EQ, each source has a fader and a meter, and the music dips while someone speaks.</span></p>
+              <div class="eds"><span class="tag">Standard · Extra</span><span class="tag warn"><span class="zh">只有 Windows</span><span class="en">Windows only</span></span></div>
+            </div>
+          </article>
+          <article class="feat">
+            <div class="media cover"><img src="guide/img/countdown.png" width="1920" height="1080" alt="The countdown on the projector: Starting soon, 9:57" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">开场倒数和节目流程</span><span class="en">Countdown and run of show</span></h3>
+              <p><span class="zh">投影上全屏倒数，音乐刚好在零秒结束。Extra 可以排好整场流程，按一下就进入下一段。</span><span class="en">A full-screen countdown on the projector, with the music ending at zero. Extra plans the whole event: one press goes to the next part.</span></p>
+              <div class="eds"><span class="tag">Standard · Extra</span></div>
+            </div>
+          </article>
+          <article class="feat">
+            <div class="media cover"><img src="guide/img/stage.png" width="1180" height="820" alt="The stage display on a tablet: a message, this slide, the next slide and the notes" loading="lazy"></div>
+            <div class="feat-body">
+              <h3><span class="zh">讲台提示屏</span><span class="en">Stage display</span></h3>
+              <p><span class="zh">讲员的手机或平板上有这一页、下一页、备注、剩余时间，还有你发过去的讯息。</span><span class="en">The speaker's phone or tablet shows this slide, the next, the notes, the time left and your messages.</span></p>
+              <div class="eds"><span class="tag">Extra</span></div>
+            </div>
+          </article>
+        </div>
+        <p class="more"><span class="zh">还有：开场前检查、Cue（一个按钮执行一串动作）、耳机预听、修好翻页很慢的 Canva 文件。<a href="guide/" data-guide="guide/">详见使用说明 →</a></span><span class="en">Also: a check before the event, cues (one press for a sequence of steps), headphone preview, and a fix for slow Canva files. <a href="guide/" data-guide="guide/">All in the guide →</a></span></p>
+      </div>
+    </section>
 
-      <article class="card">
-        <div class="card-h"><h2>Mac</h2><span class="tag warn"><span class="zh">测试版</span><span class="en">Test version</span></span></div>
-        <ul>
-          <li><span class="zh">功能和 Windows 版基本相同，但还没有和真正的 PowerPoint 一起测试过，正式使用前请先试一次。</span><span class="en">Nearly the same features as on Windows, but not yet tested with PowerPoint on a real Mac: try it before an event.</span></li>
-          <li><span class="zh">第一次打开：在“应用程序”里按住 Control 点它 → 打开（没有 Apple 签名）。如提示“已损坏”，在“终端”执行 <code>xattr -cr "/Applications/Stagio Standard.app"</code>（换成你装的版本）。</span><span class="en">First start: Control-click the app in Applications → Open (it is not signed by Apple). If it says "damaged", run <code>xattr -cr "/Applications/Stagio Standard.app"</code> in Terminal, with your edition's name.</span></li>
-          <li><span class="zh">投影画面实时截取需要 macOS 14（Sonoma）以上，第一次用时要允许“屏幕录制”。</span><span class="en">The live projector picture needs macOS 14 (Sonoma) or later and the Screen Recording permission.</span></li>
-          <li><span class="zh">和 Windows 不同：投影模式只有同步和延伸（只用投影机时合上盖子）；没有 Stagio Wi-Fi，改用手机热点；不需要“加速”。</span><span class="en">Different from Windows: Duplicate and Extend only (close the lid for the projector only); no Stagio Wi-Fi, use the phone's hotspot; no speed-up needed.</span></li>
-        </ul>
-      </article>
+    <!-- Fixed links: the "downloads" release always holds each edition's newest files. -->
+    <section class="band" id="download">
+      <div class="wrap">
+        <div class="sec-top">
+          <div>
+            <p class="label"><span class="zh">下载</span><span class="en">Download</span></p>
+            <h2 class="sec-h"><span class="zh">选一个版本</span><span class="en">Pick an edition</span></h2>
+            <p class="sec-lead"><span class="zh">大的版本包含小的版本的全部功能。三个版本的设置共用，随时可以换。</span><span class="en">Each bigger edition has everything of the smaller one. They share their settings, so you can switch any time.</span></p>
+          </div>
+          <div class="seg" role="group" aria-label="Windows / Mac"><button type="button" data-set-os="win" aria-pressed="true">Windows</button><button type="button" data-set-os="mac" aria-pressed="false">Mac</button></div>
+        </div>
 
-      <article class="card">
-        <div class="card-h"><h2><span class="zh">手机 · 平板</span><span class="en">Phone · tablet</span></h2><span class="tag ok"><span class="zh">不用下载</span><span class="en">No download</span></span></div>
-        <p><span class="zh">手机和平板是遥控器，用网页打开，不用安装。</span><span class="en">Phones and tablets are the remote, in the browser; nothing to install.</span></p>
-        <ol>
-          <li><span class="zh">在电脑的 Stagio 点 <b>Remote</b>，用手机相机扫二维码。</span><span class="en">On the computer, click <b>Remote</b> in Stagio and scan the code with the phone's camera.</span></li>
-          <li><span class="zh">再选“加到主屏幕”，以后像 App 一样从图标打开。</span><span class="en">Then "Add to Home Screen": from then on it opens like an app.</span></li>
-        </ol>
-        <p class="dim"><span class="zh">没有 Wi-Fi 时：Stagio 可以开自己的 Wi-Fi（Windows），或用手机热点（Mac），或用蓝牙（Android）。</span><span class="en">No Wi-Fi: Stagio's own Wi-Fi (Windows), the phone's hotspot (Mac), or Bluetooth (Android).</span></p>
-        <a class="btn" href="remote/"><span class="zh">蓝牙遥控（Android、Chrome）</span><span class="en">Bluetooth remote (Android, Chrome)</span></a>
-      </article>
+        <div class="editions">
+          <article class="ed">
+            <div class="ed-h"><h3><span>Stagio</span> Lite</h3><span class="tag" data-os="win">Beta 1.3.1</span><span class="tag" data-os="mac">Beta 1.3.1</span></div>
+            <p class="for"><span class="zh">你自己上台讲投影片：讲员、老师、做报告的人。</span><span class="en">You present your own slides: speakers, teachers, anyone giving a talk.</span></p>
+            <ul>
+              <li><span class="zh">手机当翻页器，看到下一页、备注和计时</span><span class="en">Your phone as the clicker, with the next slide, notes and timers</span></li>
+              <li><span class="zh">黑屏、白屏，和投影上真正的画面</span><span class="en">Black or white screen, and the real picture on the projector</span></li>
+              <li data-os="win"><span class="zh">投影模式（复制、扩展等）和音量，放投影片里的影片也方便</span><span class="en">Projector mode (duplicate, extend…) and the volume, for videos in your slides</span></li>
+              <li data-os="mac"><span class="zh">复制或扩展屏幕和音量，放投影片里的影片也方便</span><span class="en">Duplicate or extend, and the volume, for videos in your slides</span></li>
+              <li><span class="zh">开场前检查</span><span class="en">A check before the event</span></li>
+              <li data-os="win"><span class="zh">让翻页很慢的文件变快</span><span class="en">Speeds up files that change slides slowly</span></li>
+            </ul>
+            <div class="dl">
+              <a class="btn primary" data-os="win" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Setup-Windows.exe"><span class="zh">下载 Windows 版</span><span class="en">Download for Windows</span></a>
+              <div class="two" data-os="mac">
+                <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Mac-AppleSilicon.dmg">Apple silicon</a>
+                <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Lite-Mac-Intel.dmg">Intel</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="ed">
+            <div class="ed-h"><h3><span>Stagio</span> Standard</h3><span class="tag" data-os="win">Beta 1.4.1</span><span class="tag" data-os="mac">Beta 1.3.1</span></div>
+            <p class="for"><span class="zh">你在后面帮忙控投影片和音乐。</span><span class="en">You run the slides and the music from the back.</span></p>
+            <p class="plus"><span class="zh">Lite 的全部，再加上</span><span class="en">Everything in Lite, and</span></p>
+            <ul>
+              <li data-os="win"><span class="zh">任何播放程序的音乐（音乐 App、媒体播放器、浏览器），平滑淡入淡出</span><span class="en">Music from any player (a music app, a media player, a browser), with smooth fades</span></li>
+              <li data-os="mac"><span class="zh">“音乐”App 或 Spotify 的音乐，平滑淡入淡出</span><span class="en">Music from the Music app or Spotify, with smooth fades</span></li>
+              <li data-os="win"><span class="zh">混音：麦克风经 EQ 直出喇叭，讲话时音乐自动降低</span><span class="en">Mixer: the microphone to the speakers with EQ; the music dips while someone speaks</span></li>
+              <li><span class="zh">投影上的开场倒数</span><span class="en">Opening countdown on the projector</span></li>
+              <li><span class="zh">Cue：一个按钮执行一串动作，或翻到某一页自动执行</span><span class="en">Cues: one press for a sequence of steps, or by themselves at a slide</span></li>
+              <li data-os="win"><span class="zh">耳机预听：其他程序只在耳机里，观众听不到</span><span class="en">Headphone preview: other apps only in your headphones, not in the room</span></li>
+              <li><span class="zh">切换音频设备</span><span class="en">Switch the sound device</span></li>
+            </ul>
+            <div class="dl">
+              <a class="btn primary" data-os="win" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Setup-Windows.exe"><span class="zh">下载 Windows 版</span><span class="en">Download for Windows</span></a>
+              <div class="two" data-os="mac">
+                <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Mac-AppleSilicon.dmg">Apple silicon</a>
+                <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Standard-Mac-Intel.dmg">Intel</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="ed">
+            <div class="ed-h"><h3><span>Stagio</span> Extra</h3><span class="tag" data-os="win">Beta 1.5.1</span><span class="tag" data-os="mac">Beta 1.4.1</span></div>
+            <p class="for"><span class="zh">你负责整场活动。</span><span class="en">You run the whole event.</span></p>
+            <p class="plus"><span class="zh">Standard 的全部，再加上</span><span class="en">Everything in Standard, and</span></p>
+            <ul>
+              <li><span class="zh">节目流程：按一下就切到下一段的文件、音乐和画面</span><span class="en">Run of show: one press goes to the next part's file, music and screen</span></li>
+              <li><span class="zh">每段剩多少时间、整场快了或慢了多少</span><span class="en">Time left in each part, and how far ahead or behind the event is</span></li>
+              <li><span class="zh">讲台提示屏：讲员的手机或平板，还能收到你发的讯息</span><span class="en">Stage display on the speaker's phone or tablet, with your messages</span></li>
+              <li data-os="win"><span class="zh">完整混音（AUX 输出、麦克风 EQ、混音场景）和完整耳机预听</span><span class="en">The full mixer (AUX output, microphone EQ, scenes) and the full headphone preview</span></li>
+            </ul>
+            <div class="dl">
+              <a class="btn primary" data-os="win" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Setup-Windows.exe"><span class="zh">下载 Windows 版</span><span class="en">Download for Windows</span></a>
+              <div class="two" data-os="mac">
+                <a class="btn primary" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Mac-AppleSilicon.dmg">Apple silicon</a>
+                <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/download/downloads/Stagio-Extra-Mac-Intel.dmg">Intel</a>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <p class="dl-note" data-os="win"><span class="zh">Windows 10 或 11，PowerPoint 2016 或 Microsoft 365。Mac 版在上方切换。</span><span class="en">Windows 10 or 11, with PowerPoint 2016 or Microsoft 365. For the Mac, switch above.</span></p>
+        <p class="dl-note" data-os="mac"><span class="zh"><span class="tag warn">测试版</span> 还没在真的 Mac 上配合 PowerPoint 测试过，正式使用前请先试一次。哪一个？苹果菜单 → 关于本机：写“芯片 Apple M…”选 Apple silicon，写“处理器 Intel”选 Intel。</span><span class="en"><span class="tag warn">Test version</span> Not yet tested with PowerPoint on a real Mac: try it before an event. Which one? Apple menu → About This Mac: “Chip Apple M…” is Apple silicon, “Processor Intel” is Intel.</span></p>
+
+        <details class="compare">
+          <summary><span class="zh">比较全部功能</span><span class="en">Compare every feature</span></summary>
+          <div class="table-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>Lite</th><th>Standard</th><th>Extra</th></tr></thead>
+              <tbody>
+                <tr><td><span class="zh">投影片：Program、Preview、备注、计时、黑屏/白屏、拖动调整顺序</span><span class="en">Slides: program, preview, notes, timers, black/white, drag to reorder</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">手机遥控、蓝牙遥控（Android）</span><span class="en">Phone remote, Bluetooth remote (Android)</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">Stagio Wi-Fi（没有网络也能连手机）</span><span class="en">Stagio Wi-Fi (phones connect without a network)</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">开场前检查</span><span class="en">Check before the event</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">让翻页很慢的文件变快</span><span class="en">Speed up slow files</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">投影模式、系统音量和静音</span><span class="en">Projector mode, system volume and mute</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="mac"><td><span class="zh">复制/扩展屏幕、系统音量和静音</span><span class="en">Duplicate / extend, system volume and mute</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">放映在哪个屏幕、隐藏演示者视图</span><span class="en">Show slides on, hide the presenter view</span></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">音乐和淡入淡出</span><span class="en">Music and fades</span><span class="dim" data-os="mac"><span class="zh">（“音乐”App、Spotify）</span><span class="en"> (Music app, Spotify)</span></span></td><td class="n">–</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">切换音频设备</span><span class="en">Sound device</span></td><td class="n">–</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">Cue</span><span class="en">Cues</span></td><td class="n">–</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">开场倒数</span><span class="en">Opening countdown</span></td><td class="n">–</td><td class="y">✓</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">混音</span><span class="en">Mixer</span></td><td class="n">–</td><td><span class="zh">基本</span><span class="en">Basic</span></td><td><span class="zh">完整</span><span class="en">Full</span></td></tr>
+                <tr data-os="win"><td><span class="zh">耳机预听</span><span class="en">Headphone preview</span></td><td class="n">–</td><td><span class="zh">基本</span><span class="en">Basic</span></td><td><span class="zh">完整</span><span class="en">Full</span></td></tr>
+                <tr><td><span class="zh">节目流程、每段剩余时间、整场快慢</span><span class="en">Run of show, time left, ahead / behind</span></td><td class="n">–</td><td class="n">–</td><td class="y">✓</td></tr>
+                <tr><td><span class="zh">讲台提示屏和讯息</span><span class="en">Stage display and messages</span></td><td class="n">–</td><td class="n">–</td><td class="y">✓</td></tr>
+                <tr data-os="win"><td><span class="zh">版本</span><span class="en">Version</span></td><td>1.3.1</td><td>1.4.1</td><td>1.5.1</td></tr>
+                <tr data-os="mac"><td><span class="zh">版本（测试版）</span><span class="en">Version (test)</span></td><td>1.3.1</td><td>1.3.1</td><td>1.4.1</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="band" id="install">
+      <div class="wrap">
+        <div class="sec-top">
+          <div>
+            <p class="label"><span class="zh">安装</span><span class="en">Install</span></p>
+            <h2 class="sec-h"><span class="zh">几分钟就能用</span><span class="en">Ready in a few minutes</span></h2>
+          </div>
+          <div class="seg" role="group" aria-label="Windows / Mac"><button type="button" data-set-os="win" aria-pressed="true">Windows</button><button type="button" data-set-os="mac" aria-pressed="false">Mac</button></div>
+        </div>
+        <div class="install">
+          <div class="box" data-os="win">
+            <h3>Windows</h3>
+            <ol class="steps">
+              <li><span class="zh">在上面下载你的版本并打开。需要 Windows 10 或 11、PowerPoint 2016 或 Microsoft 365。</span><span class="en">Download your edition above and open it. Windows 10 or 11, with PowerPoint 2016 or Microsoft 365.</span></li>
+              <li><span class="zh">如果出现“Windows 已保护你的电脑”：点“更多信息 → 仍要运行”。安装程序没有代码签名，每个文件的 SHA-256 在发布页上。</span><span class="en">If Windows says “Windows protected your PC”: More info → Run anyway. The installer is not code-signed; each file's SHA-256 is on the release page.</span></li>
+              <li><span class="zh">Windows 防火墙询问时，允许“专用网络”，手机才连得上。</span><span class="en">When Windows Firewall asks, allow private networks, so phones can connect.</span></li>
+              <li><span class="zh">打开你的投影片，在 Stagio 点 <b>Remote</b>，用手机扫码。</span><span class="en">Open your presentation, click <b>Remote</b> in Stagio and scan the code with your phone.</span></li>
+            </ol>
+            <ul class="notes">
+              <li><span class="zh"><b>双击后没反应</b>或提示无法访问：防毒软件还在检查这个新文件，等几分钟再试。</span><span class="en"><b>Nothing happens</b>, or “can't access”: antivirus software is still checking the new file. Try again in a few minutes.</span></li>
+              <li><span class="zh"><b>从 OneDesk 升级</b>（Stagio 以前的名字）：装同一个版本的 Stagio（例如 OneDesk Extra → Stagio Extra），设置、PIN 和 Cue 都保留。0.x 的 OneDesk 装 Standard。</span><span class="en"><b>Updating from OneDesk</b> (Stagio's earlier name): install the same edition of Stagio (OneDesk Extra → Stagio Extra); the settings, PIN and cues stay. OneDesk 0.x: install Standard.</span></li>
+              <li><span class="zh"><b>三个版本</b>可以都装，设置、PIN、Cue 共用，同一时间开一个。</span><span class="en"><b>All three editions</b> can be installed. They share settings, PIN and cues; one runs at a time.</span></li>
+              <li><span class="zh"><b>音乐</b>（Standard、Extra）：用你平常用的播放程序就可以。</span><span class="en"><b>Music</b> (Standard, Extra): any player you already use.</span></li>
+            </ul>
+          </div>
+
+          <div class="box" data-os="mac">
+            <h3>Mac <span class="tag warn"><span class="zh">测试版</span><span class="en">Test version</span></span></h3>
+            <ol class="steps">
+              <li><span class="zh">在上面下载你的版本（Apple silicon 或 Intel），打开后把 Stagio 拖到“应用程序”。</span><span class="en">Download your edition above (Apple silicon or Intel), open it and drag Stagio to Applications.</span></li>
+              <li><span class="zh">第一次打开：在“应用程序”里按住 Control 点它 → 打开（没有 Apple 签名）。</span><span class="en">First start: Control-click the app in Applications → Open (it is not signed by Apple).</span></li>
+              <li><span class="zh">macOS 询问时，允许 Stagio 控制 PowerPoint 和音乐程序（“音乐”或 Spotify）。</span><span class="en">When macOS asks, allow Stagio to control PowerPoint and your music app (Music or Spotify).</span></li>
+              <li><span class="zh">投影画面实时截取需要 macOS 14（Sonoma）以上，第一次用时允许“屏幕录制”。</span><span class="en">The live projector picture needs macOS 14 (Sonoma) or later and the Screen Recording permission.</span></li>
+            </ol>
+            <ul class="notes">
+              <li><span class="zh"><b>还在测试</b>：还没在真的 Mac 上配合 PowerPoint 测试过，正式使用前请先试一次。Settings → About → Run Mac check 会整理出要回报的资料。</span><span class="en"><b>Still being tested</b>: not yet tried with PowerPoint on a real Mac, so try it before an event. Settings → About → Run Mac check collects what to report.</span></li>
+              <li><span class="zh"><b>提示“已损坏”</b>：在“终端”执行 <code>xattr -cr "/Applications/Stagio Standard.app"</code>（换成你装的版本）。</span><span class="en"><b>It says “damaged”</b>: run <code>xattr -cr "/Applications/Stagio Standard.app"</code> in Terminal, with your edition's name.</span></li>
+              <li><span class="zh"><b>Mac 上没有</b>：混音、耳机预听、Stagio Wi-Fi（改用手机热点）、加速慢文件（不需要）、选放映屏幕和隐藏演示者视图。投影模式只有复制和扩展（只用投影机时合上盖子）。</span><span class="en"><b>Not on the Mac</b>: the mixer, headphone preview, Stagio Wi-Fi (use the phone's hotspot), speeding up slow files (not needed), Show slides on and hiding the presenter view. Projector mode: Duplicate and Extend only (close the lid for the projector only).</span></li>
+            </ul>
+          </div>
+
+          <div class="box">
+            <h3><span class="zh">手机 · 平板</span><span class="en">Phone · tablet</span> <span class="tag ok"><span class="zh">不用下载</span><span class="en">No download</span></span></h3>
+            <p><span class="zh">手机和平板是遥控器，用浏览器打开，不用安装。</span><span class="en">Phones and tablets are the remote, in the browser. Nothing to install.</span></p>
+            <ol class="steps">
+              <li><span class="zh">在电脑的 Stagio 点 <b>Remote</b>，用手机相机扫二维码。</span><span class="en">On the computer, click <b>Remote</b> in Stagio and scan the code with the phone's camera.</span></li>
+              <li><span class="zh">选“加到主屏幕”，以后像 App 一样从图标打开。</span><span class="en">Choose “Add to Home Screen”: from then on it opens like an app.</span></li>
+            </ol>
+            <ul class="notes">
+              <li data-os="win"><span class="zh"><b>没有 Wi-Fi</b>：用 Stagio Wi-Fi，电脑开自己的网络，扫一个码加入、再扫一个码打开 Stagio。</span><span class="en"><b>No Wi-Fi</b>: Stagio Wi-Fi. The computer opens its own network; scan one code to join it and one to open Stagio.</span></li>
+              <li data-os="mac"><span class="zh"><b>没有 Wi-Fi</b>：打开手机热点，让 Mac 连上，再扫码。</span><span class="en"><b>No Wi-Fi</b>: turn on the phone's hotspot, join it from the Mac, then scan the code.</span></li>
+              <li><span class="zh"><b>Android + Chrome</b>：蓝牙遥控不需要任何网络。</span><span class="en"><b>Android with Chrome</b>: the Bluetooth remote needs no network at all.</span></li>
+            </ul>
+            <a class="btn" href="remote/"><span class="zh">蓝牙遥控</span><span class="en">Bluetooth remote</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="open">
+      <div class="wrap open">
+        <div>
+          <p class="label"><span class="zh">开源</span><span class="en">Open source</span></p>
+          <h2 class="sec-h"><span class="zh">免费，而且开源</span><span class="en">Free and open source</span></h2>
+          <p><span class="zh">Stagio 免费，以 GPL-3.0 授权。它配合你已经有的东西：PowerPoint 和你的音乐播放程序。不用账号，也不上云端；手机通过你自己的网络连到电脑。</span><span class="en">Stagio is free, under the GPL-3.0. It works with what you already have: PowerPoint and your music player. No accounts and nothing in the cloud; phones talk to your computer over your own network.</span></p>
+          <p class="dim"><span class="zh">安装程序在 GitHub 上从公开的源代码构建。目前还没有代码签名，所以 Windows 和 macOS 第一次会提醒；每个文件的 SHA-256 都在发布页上，可以核对。</span><span class="en">The installers are built on GitHub from the public source code. They are not code-signed yet, so Windows and macOS warn the first time; the SHA-256 of every file is on the release page to compare.</span></p>
+        </div>
+        <div class="links">
+          <a class="btn" href="https://github.com/Rojakiisme/stagio"><span class="zh">源代码</span><span class="en">Source code</span> <span aria-hidden="true">→</span></a>
+          <a class="btn" href="https://github.com/Rojakiisme/stagio/releases/tag/downloads"><span class="zh">下载文件和 SHA-256</span><span class="en">Files and SHA-256</span> <span aria-hidden="true">→</span></a>
+          <a class="btn" href="guide/" data-guide="guide/"><span class="zh">使用说明</span><span class="en">Guide</span> <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
     </section>
   </main>
 
-  <footer>
-    <span class="dim">Lite Beta 1.3.1 · Standard Beta 1.4.1 · Extra Beta 1.5.1 (Mac: Standard 1.3.1, Extra 1.4.1) · Windows <span class="zh">和</span><span class="en">and</span> Mac</span>
-    <a href="https://github.com/Rojakiisme/stagio/releases"><span class="zh">所有版本</span><span class="en">All versions</span></a>
-    <a href="https://github.com/Rojakiisme/stagio"><span class="zh">源代码（GPL-3.0）</span><span class="en">Source code (GPL-3.0)</span></a>
-    <a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a>
+  <footer class="site-foot">
+    <div class="wrap foot-row">
+      <span class="dim">Stagio · Windows: Lite 1.3.1 · Standard 1.4.1 · Extra 1.5.1 · Mac (<span class="zh">测试版</span><span class="en">test</span>): Lite 1.3.1 · Standard 1.3.1 · Extra 1.4.1</span>
+      <span class="links">
+        <a href="https://github.com/Rojakiisme/stagio/releases"><span class="zh">所有版本</span><span class="en">All versions</span></a>
+        <a href="https://github.com/Rojakiisme/stagio"><span class="zh">源代码（GPL-3.0）</span><span class="en">Source code (GPL-3.0)</span></a>
+        <a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a>
+      </span>
+    </div>
   </footer>
 </body>
 </html>
