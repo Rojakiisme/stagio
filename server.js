@@ -12,6 +12,9 @@ const { CueRunner, STEP_TYPES } = require('./lib/cues');
 const { AutoCues } = require('./lib/autocues');
 const { RunOfShow } = require('./lib/runofshow');
 const { Preview } = require('./lib/preview');
+const { Countdown } = require('./lib/countdown');
+const { Mixer } = require('./lib/mixer');
+const { Helper } = require('./lib/helper');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
 const edition = require('./lib/edition').current();
@@ -33,9 +36,22 @@ const preview = ed.preview && platform.features.preview && platform.helpers?.mus
     musicApp: () => (music() && localMusic.state?.session ? localMusic.state.app?.process || '' : ''),
     devices: () => (Array.isArray(output.audio?.devices) ? output.audio.devices : null), // null: the reading failed
     onChange: () => broadcastSoon(),
+    auxRoutes: () => mixer?.auxRoutes() || {},
+    auxDevice: () => (ed.mixerPro ? mixer?.s.aux.device || '' : ''),
   })
   : null;
-const cues = new CueRunner({ ppt, output, music, preview: () => (ed.previewPro ? preview : null) });
+// Mixer (Standard basic, Extra full; Windows only): the mic through Stagio, faders, meters, the
+// music dips while someone speaks. Its own helper process, started when the mixer is first used.
+const mixerHelper = ed.mixer && platform.features.mixer ? new Helper('mixer', { timeoutMs: 15000 }) : null;
+const mixer = mixerHelper ? new Mixer({
+  helper: mixerHelper, cfg, save: saveCfg, pro: ed.mixerPro,
+  music,
+  musicApp: () => (music() && localMusic.state?.app?.process) || '',
+  outputs: () => (Array.isArray(output.audio?.devices) ? output.audio.devices : null),
+  onChange: () => broadcastSoon(),
+  onMeters: (m) => pushMeters(m),
+}) : null;
+const cues = new CueRunner({ ppt, output, music, preview: () => (ed.previewPro ? preview : null), mixer: () => (ed.mixerPro ? mixer : null) });
 
 // Every "start show" (button, key, cue) applies the display chosen under Output. Once Stagio has
 // changed PowerPoint's own setting, going back to "Automatic" has to be written back as well.
@@ -92,6 +108,12 @@ const runOfShow = ed.run ? new RunOfShow({
   cueList: () => cfg.cues,
   onChange: () => broadcast(),
   segment: (name) => startSegment(name),
+}) : null;
+// The opening countdown on its own (Standard, Extra): see lib/countdown.js.
+const countdown = ed.countdown ? new Countdown({
+  cfg, save: saveCfg, music,
+  busy: () => !!runOfShow?.countdownInfo(),
+  onChange: () => broadcast(),
 }) : null;
 
 ppt.onSlideChange = (before, after, first) => {
@@ -219,8 +241,11 @@ app.use((req, res, next) => {
 const needs = (feature, what) => (req, res, next) => (ed[feature] ? next()
   : res.status(403).json({ ok: false, error: `${what} is not part of ${edition.name}` }));
 app.use(['/api/music', '/api/features'], needs('music', 'Music'));
-app.use('/api/audio', needs('audio', 'Sound control'));
+app.use(['/api/audio/volume', '/api/audio/mute'], needs('volume', 'The system volume'));
+app.use('/api/audio/device', needs('audio', 'Choosing the sound output'));
+app.use('/api/countdown', needs('countdown', 'The opening countdown'));
 app.use('/api/preview', needs('preview', 'Headphone preview'));
+app.use('/api/mixer', needs('mixer', 'The mixer'));
 app.use('/api/display', needs('displayMode', 'Display mode'));
 app.use('/api/cues', needs('cues', 'Cues'));
 app.use('/api/run', needs('run', 'The run of show'));
@@ -303,6 +328,7 @@ function buildParts() {
     features: cfg.features,
     localMusic: ed.music && cfg.features.music === 'local' ? localMusic.summary() : null,
     preview: preview ? preview.summary() : null,
+    mixer: mixer ? mixer.summary() : null,
     audio: output.audio,
     displays: output.displays,
     displayMode: output.displayMode,
@@ -314,6 +340,7 @@ function buildParts() {
     fastCopy: fastCopyState(),
     timer,
     run: runOfShow ? runOfShow.summary() : null,
+    countdown: countdown ? countdown.summary() : null,
     stage: ed.stage ? { screens: stageClients.size, message: stageMsg, presets: cfg.stagePresets, canFlip: !!cfg.stageCanFlip } : null,
     remotes: remoteCount(),
     // Backup connections (no password or key here: the state also goes to phones).
@@ -1027,8 +1054,49 @@ app.get('/api/music/art', (req, res) => {
 // ---------------- outputs ----------------
 
 app.post('/api/audio/device', act((req) => output.setDevice(req.body.id), () => output.pollAudio()));
-app.post('/api/audio/volume', act((req) => output.setVolume(req.body.value), () => output.pollAudio()));
+app.post('/api/audio/volume', act((req) => {
+  const v = Number(req.body?.value);
+  if (req.body?.value === '' || req.body?.value === null || !Number.isFinite(v) || v < 0 || v > 100) throw new Error('The volume is a number from 0 to 100');
+  return output.setVolume(Math.round(v));
+}, () => output.pollAudio()));
 app.post('/api/audio/mute', act((req) => output.setMute(req.body.mute), () => output.pollAudio()));
+
+// ---------------- opening countdown on its own (Standard, Extra) ----------------
+app.post('/api/countdown', act((req) => {
+  const b = req.body || {};
+  if (b.stop) return countdown.stop();
+  const settings = {};
+  for (const k of ['title', 'notices', 'mode', 'minutes', 'clock', 'fadeOut']) if (b[k] !== undefined) settings[k] = b[k];
+  if (b.start) return countdown.start(settings);
+  countdown.configure(settings);
+}));
+// The countdown window asks this every second: the run of show's countdown, or the one on its own.
+app.get('/api/countdown-screen', (req, res) => res.json({ ok: true, data: runOfShow?.countdownInfo() || countdown?.info() || null }));
+
+// ---------------- mixer (Standard basic, Extra full) ----------------
+const needMixer = () => { if (!mixer) throw new Error('The mixer needs Windows'); return mixer; };
+app.post('/api/mixer', act((req) => needMixer().configure(req.body || {})));
+app.post('/api/mixer/slides', act((req) => needMixer().setSlides(req.body || {})));
+app.post('/api/mixer/music', act((req) => needMixer().setMusicMute(!!req.body?.mute)));
+app.post('/api/mixer/inputs', act(() => needMixer().refreshInputs()));
+app.post('/api/mixer/scene', act(async (req) => {
+  const b = req.body || {};
+  if (b.save) return needMixer().saveScene(b.name);
+  if (b.delete) return needMixer().deleteScene(b.id);
+  if (b.recall) return needMixer().recallScene(b.id);
+  throw new Error('Save, recall or delete?');
+}));
+
+// Level meters a few times a second, straight to the consoles (not through the state patches).
+let metersAt = 0;
+function pushMeters(m) {
+  if (!clients.size) return;
+  const now = Date.now();
+  if (now - metersAt < 150) return;
+  metersAt = now;
+  const line = JSON.stringify({ _meters: m });
+  for (const res of clients) send(res, line);
+}
 
 // ---------------- headphone preview (Standard basic, Extra full) ----------------
 const needPreview = () => { if (!preview) throw new Error('Headphone preview needs Windows'); return preview; };
@@ -1045,7 +1113,7 @@ app.post('/api/display/mode', act((req) => output.setDisplayMode(req.body.mode))
 
 // Step types this edition offers (the headphone-preview step is Extra's, on Windows).
 app.get('/api/cues/types', (req, res) => res.json(Object.fromEntries(Object.entries(STEP_TYPES)
-  .filter(([, t]) => !t.needs || (ed[t.needs] && preview)))));
+  .filter(([, t]) => !t.needs || (ed[t.needs] && (t.needs.startsWith('mixer') ? mixer : preview))))));
 app.put('/api/cues', act((req) => {
   if (!Array.isArray(req.body)) throw new Error('Invalid cue list');
   cfg.cues = req.body.map((c, i) => {
@@ -1205,11 +1273,12 @@ loop(async () => {
 // every 3 s when nothing plays: each call wakes a helper process, which costs more than the call
 }, () => (localMusic.fading ? 1000 : localMusic.state?.isPlaying ? 2000 : 3000));
 loop(async () => {
-  if (!ed.audio) return;
+  if (!ed.volume) return;
   await output.pollAudio();
   preview?.devicesChanged();
 }, 3000);
 loop(() => preview?.tick(), 200, { quiet: true }); // it broadcasts when something changed
+loop(() => mixer?.tick(), 3000, { quiet: true });
 loop(() => {
   for (const r of cfg.recent) {
     if (!isFilePath(r.path) || /^https?:/i.test(r.path)) continue;
@@ -1218,6 +1287,7 @@ loop(() => {
   if (!restoring && fastJob?.state !== 'running') scanBackups(); // copies deleted or added by hand
 }, 5000);
 loop(() => output.pollDisplays(), 5000);
+if (countdown) loop(() => countdown.tick(), 500, { quiet: true });
 if (runOfShow) {
   loop(() => runOfShow.tick(), 500);           // the countdown's fade and going on at zero
   loop(() => runOfShow.checkFiles(), 5000);    // the run's files still there?
@@ -1258,9 +1328,9 @@ ready.catch((e) => console.error(`Could not start on port ${cfg.port}: ${e.messa
 process.on('uncaughtException', (e) => console.error('[uncaught]', e));
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
-const stop = () => platform.stop();
+const stop = () => { platform.stop(); mixerHelper?.stop(); };
 /** Before the desktop app quits: apps sent to the headphones go back to the default output. */
-const beforeQuit = () => (preview ? preview.shutdown() : Promise.resolve());
+const beforeQuit = () => Promise.all([preview ? preview.shutdown() : null, mixer ? mixer.shutdown() : null]);
 /** For the desktop app: is anything depending on Stagio right now? */
 const status = () => ({
   live: !!ppt.state.show,
@@ -1276,6 +1346,6 @@ if (require.main === module) {
 }
 
 /** The desktop app hands over its countdown window (show/hide on the projector). */
-const setScreenHost = (host) => runOfShow?.setScreen(host);
+const setScreenHost = (host) => { runOfShow?.setScreen(host); countdown?.setScreen(host); };
 
 module.exports = { ready, stop, beforeQuit, status, url, edition, setScreenHost };

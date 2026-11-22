@@ -193,6 +193,7 @@ function connect() {
     lastMsgAt = Date.now();
     setLink(true);
     const patch = JSON.parse(e.data);
+    if (patch._meters) { meters = patch._meters; renderMeters(); return; }
     if (patch._full || Object.keys(patch).length) applyState(patch);
   };
   es.onerror = () => {
@@ -229,6 +230,8 @@ function applyState(patch) {
   if (has('localMusic', 'features')) renderMusic();
   if (has('audio', 'displays', 'displayMode', 'platform', 'ppt', 'settings')) renderOutput();
   if (has('preview', 'audio', 'localMusic')) renderPreview();
+  if (has('countdown', 'run')) renderCountdown();
+  if (has('mixer', 'localMusic', 'audio', 'features')) renderMixer();
   if (has('cues', 'cueRunning', 'slides', 'settings')) renderCues();
   if (has('recent')) renderRecent();
   if (has('fastCopy', 'ppt')) renderFastCopy(patch.fastCopy && !full ? patch.fastCopy : null);
@@ -249,10 +252,12 @@ const sameDeck = (a, b) => fileName(a).toLowerCase() === fileName(b).toLowerCase
 const edHas = (feature) => (['run', 'stage'].includes(feature) ? S?.edition?.features?.[feature] === true : S?.edition?.features?.[feature] !== false);
 function applyEdition() {
   const e = S.edition || {};
-  for (const f of ['music', 'audio', 'displayMode', 'cues', 'run', 'stage']) document.body.classList.toggle(`no-${f}`, !edHas(f));
+  for (const f of ['music', 'volume', 'audio', 'displayMode', 'cues', 'countdown', 'run', 'stage']) document.body.classList.toggle(`no-${f}`, !edHas(f));
   // headphone preview: Standard and Extra, on Windows (the server sends it only there)
   document.body.classList.toggle('no-preview', !S.preview);
   document.body.classList.toggle('no-previewPro', !S.preview?.pro);
+  document.body.classList.toggle('no-mixer', !S.mixer);
+  document.body.classList.toggle('no-mixerPro', !S.mixer?.pro);
   $('#brandName').textContent = e.name || 'Stagio';
   document.title = e.name || 'Stagio';
   $('#betaTag').textContent = e.label || '';
@@ -1074,6 +1079,219 @@ $('#musicMode').addEventListener('click', (e) => {
   if (b && b.dataset.music !== musicMode()) post('/api/features', { music: b.dataset.music });
 });
 
+// ---------------- opening countdown on its own (Standard, Extra) ----------------
+
+function cdSettings() {
+  const mode = $('#cdMode .on')?.dataset.cdMode || 'minutes';
+  return {
+    title: $('#cdTitle').value, mode, minutes: Number($('#cdMinutes').value) || 5, clock: $('#cdClock').value,
+    notices: $('#cdNotices').value.split('\n'), fadeOut: $('#cdFade').checked ? Number($('#cdFadeSecs').value) || 5 : 0,
+  };
+}
+function cdSetMode(mode) {
+  $$('#cdMode button').forEach((b) => b.classList.toggle('on', b.dataset.cdMode === mode));
+  $('#cdMinutes').classList.toggle('hidden', mode !== 'minutes');
+  $('#cdClock').classList.toggle('hidden', mode !== 'clock');
+}
+function cdFill() {
+  const c = S.countdown || {};
+  $('#cdTitle').value = c.title ?? 'Starting soon';
+  $('#cdMinutes').value = c.minutes || 5;
+  if (c.clock) $('#cdClock').value = c.clock;
+  $('#cdNotices').value = (c.notices || []).join('\n');
+  $('#cdFade').checked = !!c.fadeOut;
+  if (c.fadeOut) $('#cdFadeSecs').value = c.fadeOut;
+  cdSetMode(c.mode || 'minutes');
+}
+function renderCountdown() {
+  const c = S.countdown;
+  const b = $('#btnCountdown');
+  if (!c) return;
+  const runHasIt = !!S.run?.active?.countdown;
+  const left = c.active ? Math.max(0, c.active.target - (Date.now() + clockOffset)) : 0;
+  b.classList.toggle('lit', !!c.active);
+  b.textContent = c.active ? `Countdown ${fmt(left)}` : 'Countdown';
+  $('#cdState').textContent = runHasIt ? 'The run of show is showing its countdown right now.'
+    : c.active ? (c.active.done ? 'Zero reached: the countdown closes in a moment.' : `Running: ${fmt(left)} left.`) : '';
+  $('#cdStop').disabled = !c.active;
+}
+setInterval(() => { if (S?.countdown?.active) renderCountdown(); }, 1000);
+$('#btnCountdown').addEventListener('click', () => { cdFill(); renderCountdown(); $('#dlgCountdown').showModal(); });
+$('#cdMode').addEventListener('click', (e) => { const b = e.target.closest('[data-cd-mode]'); if (b) cdSetMode(b.dataset.cdMode); });
+$('#cdStart').addEventListener('click', async () => {
+  try { await api('/api/countdown', { ...cdSettings(), start: true }); $('#dlgCountdown').close(); } catch { /* toast shown */ }
+});
+$('#cdStop').addEventListener('click', () => post('/api/countdown', { stop: true }));
+
+// ---------------- mixer (Standard basic, Extra full) ----------------
+// Rows: microphone, music, slide videos, master. Levels are each program's own volume (music,
+// PowerPoint) or the system volume; the microphone goes through Stagio (lib/mixer.js).
+
+let meters = null; // { mic: [in, out], voice, master, music, slides }, pushed a few times a second
+const MX_ROWS = [
+  { id: 'mic', name: 'Mic' },
+  { id: 'music', name: 'Music', needs: 'music' },
+  { id: 'slides', name: 'Slides', tip: 'Videos and sounds in the slides (PowerPoint)' },
+  { id: 'master', name: 'Master', tip: 'The system volume' },
+];
+function mxBuildRows() {
+  const pro = !!S.mixer?.pro;
+  const html = MX_ROWS.filter((r) => !r.needs || edHas(r.needs)).map((r) => `
+    <div class="mx-row" data-row="${r.id}"${r.tip ? ` title="${esc(r.tip)}"` : ''}>
+      <span class="nm">${r.name}</span>
+      <span class="fv"><input type="range" min="0" max="${r.id === 'mic' ? 150 : 100}" data-fader="${r.id}"><span class="mt"><i></i></span></span>
+      <output data-val="${r.id}">–</output>
+      <button class="btn sm" data-mute="${r.id}" title="Mute">M</button>
+      ${pro && r.id !== 'master' ? `<span class="rt"><button class="btn sm" data-route="${r.id}:mix" title="To the speakers (MIX)">MIX</button><button class="btn sm" data-route="${r.id}:aux" title="To the AUX output">AUX</button></span>` : '<span></span>'}
+    </div>`).join('');
+  if ($('#mxStrips').dataset.html !== html) { $('#mxStrips').dataset.html = html; $('#mxStrips').innerHTML = html; }
+}
+function mxSetFader(id, value, enabled = true) {
+  const f = $(`[data-fader="${id}"]`);
+  const o = $(`[data-val="${id}"]`);
+  if (!f) return;
+  f.disabled = !enabled;
+  if (document.activeElement !== f && value != null) f.value = value;
+  o.textContent = enabled && value != null ? String(Math.round(value)) : '–';
+  f.closest('.mx-row').classList.toggle('off', !enabled);
+}
+function renderMixer() {
+  const mx = S.mixer;
+  $('#mixerGroup').classList.toggle('hidden', !mx);
+  if (!mx) return;
+  $$('#mxMode button').forEach((b) => b.classList.toggle('on', (b.dataset.mxOn === '1') === !!mx.on));
+  $('#mxOff').classList.toggle('hidden', !!mx.on);
+  $('#mxMain').classList.toggle('hidden', !mx.on);
+  if (!mx.on) return;
+  mxBuildRows();
+  const m = mx.mic;
+  $('#mxMicOn').classList.toggle('on', !!m.on);
+  $('#mxMicOn').textContent = m.on ? 'Mic live' : 'Mic off';
+  const ins = mx.inputs || [];
+  setOptions($('#mxMicDev'), [`<option value="">Default microphone${ins.find((d) => d.isDefault) ? ` (${esc(ins.find((d) => d.isDefault).name)})` : ''}</option>`].concat(ins.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`)).join(''), m.device);
+  const presets = Object.entries(mx.presets || {}).map(([k, v]) => `<option value="${k}">EQ: ${esc(v)}</option>`);
+  if (mx.pro) presets.push('<option value="custom">EQ: Custom</option>');
+  setOptions($('#mxPreset'), presets.join(''), m.preset);
+  // faders
+  mxSetFader('mic', m.level, true);
+  const lm = S.localMusic || {};
+  if (edHas('music')) mxSetFader('music', lm.volume >= 0 ? lm.volume : null, !!lm.session);
+  mxSetFader('slides', mx.slides.level >= 0 ? mx.slides.level : null, mx.slides.level >= 0);
+  mxSetFader('master', S.audio?.volume ?? null, S.audio?.volume != null);
+  const mutes = { mic: m.mute, music: mx.music.mute, slides: mx.slides.mute, master: !!S.audio?.mute };
+  $$('[data-mute]').forEach((b) => b.classList.toggle('on', !!mutes[b.dataset.mute]));
+  if (mx.pro) {
+    const routes = { mic: { mix: m.toMix, aux: m.toAux }, music: { mix: !mx.aux.music, aux: mx.aux.music }, slides: { mix: !mx.aux.slides, aux: mx.aux.slides } };
+    $$('[data-route]').forEach((b) => { const [r, k] = b.dataset.route.split(':'); b.classList.toggle('on', !!routes[r]?.[k]); b.disabled = k === 'aux' && !mx.aux.device; });
+    const devs = S.audio?.devices || [];
+    setOptions($('#mxAux'), ['<option value="">No AUX output</option>'].concat(devs.filter((d) => !d.isDefault || d.id === mx.aux.device).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`)).join(''), mx.aux.device);
+    if (document.activeElement !== $('#mxDepth')) $('#mxDepth').value = mx.duck.depth;
+    $('#mxDepthOut').textContent = `${mx.duck.depth}%`;
+    if (document.activeElement !== $('#mxRelease')) $('#mxRelease').value = mx.duck.release;
+    setOptions($('#mxScene'), ['<option value="">Scenes…</option>'].concat((mx.scenes || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`)).join(''), '');
+  }
+  $('#mxDuck').checked = !!mx.duck.on;
+  $('.mx-duck').classList.toggle('on-now', !!mx.ducked);
+  // what is going on
+  const e = mx.engine || {};
+  let hint = '';
+  if (e.error && m.on) hint = `Microphone: ${e.error}`;
+  else if (m.on && e.running) hint = `The microphone is on the speakers${mx.pro && m.toAux && mx.aux.device ? ' and the AUX output' : ''} (delay about ${e.latencyMs || 30} ms). Keep it away from the speakers; if it howls, pull its fader down or press M.`;
+  else if (m.on) hint = 'Starting the microphone…';
+  else hint = 'Mic off: the microphone is not on the speakers. Music and slide videos can still be mixed here.';
+  if (mx.ducked) hint += ' · Music dipped while someone speaks.';
+  $('#mxHint').textContent = hint;
+  if ($('#dlgEq').open) renderEq();
+}
+// a peak (0-1) to a meter width: -60 dB to 0 dB across the bar
+const meterW = (p) => (p > 0 ? Math.max(0, Math.min(100, ((20 * Math.log10(p)) + 60) / 60 * 100)) : 0);
+function renderMeters() {
+  if (!meters || !S?.mixer?.on) return;
+  const v = { mic: S.mixer.mic.on ? meters.mic?.[1] || 0 : 0, music: meters.music || 0, slides: meters.slides || 0, master: meters.master || 0 };
+  for (const [id, p] of Object.entries(v)) {
+    const bar = $(`[data-row="${id}"] .mt i`);
+    if (!bar) continue;
+    const w = meterW(p);
+    bar.style.width = `${w}%`;
+    bar.classList.toggle('hot', w > 85 && w <= 97);
+    bar.classList.toggle('clip', w > 97);
+  }
+}
+$('#mxMode').addEventListener('click', (e) => { const b = e.target.closest('[data-mx-on]'); if (b) post('/api/mixer', { on: b.dataset.mxOn === '1' }); });
+$('#mxMicOn').addEventListener('click', () => post('/api/mixer', { mic: { on: !S.mixer?.mic?.on } }));
+$('#mxMicDev').addEventListener('change', (e) => post('/api/mixer', { mic: { device: e.target.value } }));
+$('#mxMicDev').addEventListener('focus', () => post('/api/mixer/inputs'));
+$('#mxPreset').addEventListener('change', (e) => { if (e.target.value !== 'custom') post('/api/mixer', { mic: { preset: e.target.value } }); });
+$('#mxDuck').addEventListener('change', (e) => post('/api/mixer', { duck: { on: e.target.checked } }));
+$('#mxDepth').addEventListener('input', (e) => { $('#mxDepthOut').textContent = `${e.target.value}%`; });
+$('#mxDepth').addEventListener('change', (e) => post('/api/mixer', { duck: { depth: Number(e.target.value) } }));
+$('#mxRelease').addEventListener('change', (e) => post('/api/mixer', { duck: { release: Number(e.target.value) } }));
+$('#mxAux').addEventListener('change', (e) => post('/api/mixer', { aux: { device: e.target.value } }));
+$('#mxStrips').addEventListener('input', (e) => {
+  const f = e.target.closest('[data-fader]');
+  if (f) $(`[data-val="${f.dataset.fader}"]`).textContent = f.value;
+});
+$('#mxStrips').addEventListener('change', (e) => {
+  const f = e.target.closest('[data-fader]');
+  if (!f) return;
+  const v = Number(f.value);
+  if (f.dataset.fader === 'mic') post('/api/mixer', { mic: { level: v } });
+  else if (f.dataset.fader === 'music') post('/api/music/volume', { volume: v });
+  else if (f.dataset.fader === 'slides') post('/api/mixer/slides', { level: v });
+  else if (f.dataset.fader === 'master') post('/api/audio/volume', { value: v });
+});
+$('#mxStrips').addEventListener('click', (e) => {
+  const m = e.target.closest('[data-mute]');
+  if (m) {
+    const on = !m.classList.contains('on');
+    const id = m.dataset.mute;
+    if (id === 'mic') post('/api/mixer', { mic: { mute: on } });
+    else if (id === 'music') post('/api/mixer/music', { mute: on });
+    else if (id === 'slides') post('/api/mixer/slides', { mute: on });
+    else post('/api/audio/mute', { mute: on });
+    return;
+  }
+  const r = e.target.closest('[data-route]');
+  if (!r || r.disabled) return;
+  const [row, k] = r.dataset.route.split(':');
+  const mx = S.mixer;
+  if (row === 'mic') {
+    const next = { toMix: mx.mic.toMix, toAux: mx.mic.toAux, [k === 'mix' ? 'toMix' : 'toAux']: !r.classList.contains('on') };
+    if (!next.toMix && !next.toAux) return toast('The microphone has to go somewhere: MIX, AUX or both');
+    post('/api/mixer', { mic: next });
+  } else post('/api/mixer', { aux: { [row]: k === 'aux' } });
+});
+$('#mxScene').addEventListener('change', (e) => { if (e.target.value) post('/api/mixer/scene', { recall: true, id: e.target.value }); e.target.value = ''; });
+$('#mxSceneSave').addEventListener('click', () => {
+  const name = prompt('Name of this mixer scene (an existing name is replaced):', '');
+  if (name && name.trim()) post('/api/mixer/scene', { save: true, name: name.trim() });
+});
+// EQ dialog (Extra)
+function renderEq() {
+  const m = S.mixer?.mic;
+  if (!m) return;
+  const val = { gainDb: m.gainDb, gateDb: m.gateDb, eq0: m.eq[0], eq1: m.eq[1], eq2: m.eq[2], eq3: m.eq[3], eq4: m.eq[4] };
+  for (const el of $$('#dlgEq [data-eq]')) {
+    if (document.activeElement !== el) el.value = val[el.dataset.eq];
+    const out = el.nextElementSibling;
+    if (out?.tagName === 'OUTPUT') out.textContent = el.value;
+  }
+  const pre = Object.entries(S.mixer.presets || {}).map(([k, v]) => `<button data-eq-preset="${k}" class="${m.preset === k ? 'on' : ''}">${esc(v)}</button>`).join('');
+  if ($('#eqPresets').dataset.html !== pre) { $('#eqPresets').dataset.html = pre; $('#eqPresets').innerHTML = pre; }
+}
+$('#mxEqBtn').addEventListener('click', () => { renderEq(); $('#dlgEq').showModal(); });
+$('#eqPresets').addEventListener('click', (e) => { const b = e.target.closest('[data-eq-preset]'); if (b) post('/api/mixer', { mic: { preset: b.dataset.eqPreset } }); });
+$('#dlgEq').addEventListener('input', (e) => { const out = e.target.nextElementSibling; if (out?.tagName === 'OUTPUT') out.textContent = e.target.value; });
+$('#dlgEq').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-eq]');
+  if (!el) return;
+  const k = el.dataset.eq;
+  if (k === 'gainDb' || k === 'gateDb') return post('/api/mixer', { mic: { [k]: Number(el.value) } });
+  const eq = [...S.mixer.mic.eq];
+  eq[Number(k.slice(2))] = Number(el.value);
+  post('/api/mixer', { mic: { eq } });
+});
+
 // ---------------- headphone preview ----------------
 // While on, the music app and PowerPoint stay on the speakers and every other app plays only in
 // the headphones (lib/preview.js). Standard: headphones + On/Off. Extra: also the speakers device,
@@ -1273,6 +1491,10 @@ function paramInput(p, value, ci, si) {
   if (p.type === 'audioDevice') {
     const devs = S.audio?.devices || [];
     return `<select ${attrs}>${devs.map((d) => `<option value="${esc(d.id)}" ${d.id === value ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>`;
+  }
+  if (p.type === 'mixerScene') {
+    const sc = S.mixer?.scenes || [];
+    return `<select ${attrs}><option value="">Choose a scene</option>${sc.map((x) => `<option value="${esc(x.name)}" ${x.name === value ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`;
   }
   if (p.type === 'onoff') {
     return `<select ${attrs}><option value="on" ${value !== 'off' ? 'selected' : ''}>On</option><option value="off" ${value === 'off' ? 'selected' : ''}>Off</option></select>`;
@@ -1850,7 +2072,7 @@ function checkItems() {
   // Sound (not in Lite)
   const a = S.audio || {};
   const dev = (a.devices || []).find((d) => d.isDefault);
-  if (!edHas('audio')) { /* Lite: sound is left to the computer */ }
+  if (!edHas('volume')) { /* no sound control in this edition */ }
   else if (a.error || !dev) add('bad', 'Sound', a.error || 'No sound device found.');
   else if (a.mute) add('warn', 'Sound', `${dev.name} · muted`, { label: 'Unmute', run: () => post('/api/audio/mute', { mute: false }) });
   else if (a.volume != null && a.volume < 15) add('warn', 'Sound', `${dev.name} · level ${a.volume}, very low`);

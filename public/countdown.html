@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Countdown</title>
-  <!-- Stagio Extra: the opening countdown, full screen on the projector (opened by the desktop
-       app while a countdown part of the run of show is on). Big, plain, readable from the back. -->
+  <!-- The opening countdown, full screen on the projector (opened by the desktop app for a
+       countdown of the run of show, Extra, or the countdown on its own, Standard and Extra).
+       Big, plain, readable from the back. -->
   <style>
     :root { color-scheme: dark; }
     html, body { margin: 0; height: 100%; background: #000; color: #f4f4f2; overflow: hidden; cursor: none;
@@ -36,7 +37,7 @@
     async function load() {
       try {
         const t0 = Date.now();
-        const r = await fetch('/api/run/countdown', { cache: 'no-store' });
+        const r = await fetch('/api/countdown-screen', { cache: 'no-store' });
         const j = await r.json();
         info = j.ok ? j.data : null;
         if (info) offset = info.now - (t0 + Date.now()) / 2;

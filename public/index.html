@@ -31,6 +31,7 @@
       <button class="tm seg" data-seg><b data-t="segName">Segment</b><em class="mono" data-t="seg"></em></button>
     </div>
     <button class="btn sm" id="btnCheck" title="Before the event: is everything ready?">Check</button>
+    <button class="btn sm needs-countdown" id="btnCountdown" title="Opening countdown on the projector">Countdown</button>
     <button class="btn sm needs-stage" id="btnStage" title="Stage display: messages to the speaker">Stage</button>
     <button class="btn sm desktop-only" id="btnRemote">Remote</button>
     <button class="btn sm desktop-only" id="btnHelp">Keys</button>
@@ -197,9 +198,40 @@
     <section class="sec output" data-panel="output">
       <div class="sec-h"><h2>Output</h2></div>
 
+      <!-- mixer: stands in for part of a PA (Standard basic, Extra full; Windows) -->
+      <div class="needs-mixer mixer hidden" id="mixerGroup">
+        <div class="mx-h">
+          <span class="label">Mixer</span>
+          <div class="grow"></div>
+          <span class="needs-mixerPro mx-scenes">
+            <select class="sm" id="mxScene" title="Mixer scenes: saved settings"><option value="">Scenes…</option></select>
+            <button class="btn sm" id="mxSceneSave" title="Save the mixer as a scene">Save</button>
+          </span>
+          <div class="seg sm" id="mxMode"><button data-mx-on="1">On</button><button data-mx-on="0">Off</button></div>
+        </div>
+        <p class="hint" id="mxOff">On: a fader, mute and level meter for the microphone, the music, the slide videos and the master. The microphone can go straight to the speakers, and the music dips while someone speaks.</p>
+        <div id="mxMain" class="hidden">
+          <div class="mx-mic">
+            <button class="btn sm" id="mxMicOn" title="Microphone to the speakers">Mic off</button>
+            <select id="mxMicDev" title="Microphone"></select>
+            <select id="mxPreset" title="Microphone EQ"></select>
+            <button class="btn sm needs-mixerPro" id="mxEqBtn" title="Microphone gain, EQ and noise gate">EQ…</button>
+          </div>
+          <div class="mx-strips" id="mxStrips"></div>
+          <label class="mx-duck"><input type="checkbox" id="mxDuck"> Music dips while someone speaks</label>
+          <div class="needs-mixerPro mx-pro">
+            <div class="pv-row"><span class="label">Dip by</span><input type="range" min="10" max="95" id="mxDepth"><output class="mono" id="mxDepthOut"></output><span class="label">back after</span><input type="number" class="mono" min="0.3" max="10" step="0.1" id="mxRelease"><span class="dim">s</span></div>
+            <div class="pv-row"><span class="label">AUX out</span><select id="mxAux"><option value="">No AUX output</option></select></div>
+          </div>
+          <p class="hint" id="mxHint"></p>
+        </div>
+      </div>
+
       <div class="needs-audio">
         <div class="label">Audio device</div>
         <div class="list" id="audioDevices"></div>
+      </div>
+      <div class="needs-volume">
         <label class="fader">
           <span class="label">System</span>
           <input type="range" min="0" max="100" id="sysVol">
@@ -421,6 +453,39 @@
       <button class="btn hidden" id="btnMacCheckCopy">Copy</button>
     </div>
     <form method="dialog" class="actions"><button class="btn primary">Done</button></form>
+  </dialog>
+
+  <dialog id="dlgEq">
+    <h3>Microphone: gain, EQ, noise gate</h3>
+    <div class="seg sm" id="eqPresets"></div>
+    <label class="eq-row"><span class="label">Gain</span><input type="range" min="-20" max="30" step="1" data-eq="gainDb"><output class="mono"></output><span class="dim">dB</span></label>
+    <label class="eq-row"><span class="label">Low cut</span><select data-eq="eq0"><option value="0">Off</option><option value="60">60 Hz</option><option value="80">80 Hz</option><option value="100">100 Hz</option><option value="120">120 Hz</option><option value="150">150 Hz</option><option value="200">200 Hz</option></select></label>
+    <label class="eq-row"><span class="label">Low 150 Hz</span><input type="range" min="-12" max="12" step="0.5" data-eq="eq1"><output class="mono"></output><span class="dim">dB</span></label>
+    <label class="eq-row"><span class="label">Mid</span><input type="range" min="-12" max="12" step="0.5" data-eq="eq3"><output class="mono"></output><span class="dim">dB at</span><input type="number" class="mono" min="100" max="10000" step="50" data-eq="eq2"><span class="dim">Hz</span></label>
+    <label class="eq-row"><span class="label">High 7 kHz</span><input type="range" min="-12" max="12" step="0.5" data-eq="eq4"><output class="mono"></output><span class="dim">dB</span></label>
+    <label class="eq-row"><span class="label">Gate</span><input type="range" min="-90" max="-20" step="1" data-eq="gateDb"><output class="mono"></output><span class="dim">dB (quieter = closed)</span></label>
+    <p class="hint">Low cut takes out rumble and handling noise; a little Mid around 3 kHz makes speech clearer. The gate closes the microphone between words, so the room noise isn't amplified.</p>
+    <div class="actions"><form method="dialog"><button class="btn primary">Done</button></form></div>
+  </dialog>
+
+  <dialog id="dlgCountdown">
+    <h3>Opening countdown</h3>
+    <p class="dim">Full screen on the projector until the event starts. With one screen it opens in a window on this one.</p>
+    <label class="cd-row"><span class="label">Title</span><input type="text" id="cdTitle" placeholder="Starting soon"></label>
+    <div class="cd-row">
+      <span class="label">Until</span>
+      <div class="seg sm" id="cdMode"><button data-cd-mode="minutes">Minutes</button><button data-cd-mode="clock">Clock time</button></div>
+      <input type="number" class="mono" id="cdMinutes" min="1" max="180" value="5">
+      <input type="time" class="mono hidden" id="cdClock" value="10:00">
+    </div>
+    <label class="cd-row cd-notices"><span class="label">Notices</span><textarea id="cdNotices" rows="3" placeholder="One per line, they take turns under the time"></textarea></label>
+    <label class="cd-row needs-music"><span class="label">Music</span><span><input type="checkbox" id="cdFade"> fade out so it ends at zero, over <input type="number" class="mono" id="cdFadeSecs" min="1" max="30" value="5"> s</span></label>
+    <p class="hint" id="cdState"></p>
+    <div class="actions">
+      <button class="btn" id="cdStop">Stop</button>
+      <form method="dialog"><button class="btn">Close</button></form>
+      <button class="btn primary" id="cdStart">Start</button>
+    </div>
   </dialog>
 
   <dialog id="dlgStage">

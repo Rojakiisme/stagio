@@ -151,6 +151,89 @@ async function autoCueChecks() {
 }
 
 
+
+
+// ---------------------------------------------------------------- mixer (stand-in helper and music)
+
+async function mixerChecks() {
+  const { Mixer, cleanSettings } = require('../lib/mixer');
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+  const calls = [];
+  const helper = { onEvent: null, call: async (cmd, a) => { calls.push([cmd, a]); return cmd === 'mixer.appVolume' ? (a.value ?? 80) : cmd === 'mixer.inputs' ? [] : { running: !!a?.on, error: '', latencyMs: 30 }; } };
+  const fades = [];
+  const music = { state: { isPlaying: true, volume: 80 }, fading: null, level: 80,
+    fadeTo: async (to, sec) => { fades.push(['fadeTo', to, sec]); music.state.volume = to; },
+    setVolume: async (v) => { fades.push(['set', v]); music.state.volume = v; },
+    rawVolume: async (v) => { fades.push(['raw', v]); music.state.volume = v; } };
+  const make = (pro) => new Mixer({ helper, cfg: {}, save: () => {}, pro, music: () => music, musicApp: () => 'Spotify', outputs: () => [], onChange: () => {}, onMeters: () => {} });
+  const mx = make(false);
+  check('mixer starts with the microphone off (never live by itself)', mx.s.mic.on === false && mx.s.on === false);
+  await mx.configure({ on: true, mic: { on: true, level: 90, preset: 'clear' } });
+  const micCall = calls.filter((c) => c[0] === 'mixer.mic').pop()[1];
+  check('Standard: the mic goes to the speakers with the chosen EQ preset, never to AUX', micCall.on && micCall.toMix && !micCall.toAux && micCall.level === 0.9 && micCall.eq.join() === '120,-3,4000,4,2', JSON.stringify(micCall));
+  let err = null;
+  try { await mx.configure({ aux: { device: 'x' } }); } catch (e) { err = e.message; }
+  check('Standard: no AUX output (Extra)', /Extra/.test(err || ''));
+  err = null; try { mx.saveScene('A'); } catch (e) { err = e.message; }
+  check('Standard: no mixer scenes (Extra)', /Extra/.test(err || ''));
+  helper.onEvent({ evt: 'voice', on: true });
+  check('someone speaks: the music dips (60% down in Standard)', fades.at(-1)?.[0] === 'fadeTo' && fades.at(-1)[1] === 32, JSON.stringify(fades.at(-1)));
+  helper.onEvent({ evt: 'voice', on: false });
+  await sleep2(1700);
+  check('...and comes back after a pause of 1.5 s', fades.at(-1)?.[0] === 'fadeTo' && fades.at(-1)[1] === 80, JSON.stringify(fades.at(-1)));
+  helper.onEvent({ evt: 'voice', on: true });
+  music.state.isPlaying = false;              // paused by hand while dipped
+  helper.onEvent({ evt: 'voice', on: false });
+  await sleep2(1700);
+  check('music paused meanwhile: it is not started again, only its level is put back', fades.at(-1)?.[0] === 'raw' && fades.at(-1)[1] === 80, JSON.stringify(fades.at(-1)));
+  music.state.isPlaying = true;
+  await mx.configure({ mic: { on: false } });
+  fades.length = 0;
+  helper.onEvent({ evt: 'voice', on: true });
+  check('mic off: nothing dips', fades.length === 0);
+  const pro = make(true);
+  await pro.configure({ on: true, mic: { on: true, toAux: true, eq: [80, 2, 2500, 4, 1] }, aux: { device: 'AUXDEV', music: true }, duck: { depth: 80, release: 0.5 } });
+  const p2 = calls.filter((c) => c[0] === 'mixer.mic').pop()[1];
+  check('Extra: the mic can go to MIX and AUX, with its own EQ', p2.toMix && p2.toAux && p2.aux === 'AUXDEV' && p2.eq.join() === '80,2,2500,4,1' && pro.s.mic.preset === 'custom', JSON.stringify(p2));
+  check('Extra: the music app can be sent to AUX (per-app router)', JSON.stringify(pro.auxRoutes()) === '{"Spotify":"aux"}');
+  const id = pro.saveScene('Speaker');
+  await pro.configure({ mic: { level: 20, preset: 'warm' }, aux: { music: false } });
+  await pro.recallScene('Speaker');
+  check('Extra: a scene saves the mixer and brings it back', pro.s.mic.level === 80 && pro.s.mic.preset === 'custom' && pro.s.aux.music === true && !!id);
+  const cs = cleanSettings({ mic: { level: 999, gainDb: -99, eq: [5000, 50, 1, 50, -50] } });
+  check('mixer settings are kept in range', cs.mic.level === 150 && cs.mic.gainDb === -20, JSON.stringify(cs.mic));
+}
+
+// ---------------------------------------------------------------- opening countdown on its own
+
+async function countdownChecks() {
+  const { Countdown, cleanSettings } = require('../lib/countdown');
+  let t = new Date(2026, 10, 22, 9, 50, 0).getTime();
+  const screen = { shown: 0, hidden: 0, show() { this.shown++; }, hide() { this.hidden++; }, mode: () => 'window' };
+  let faded = null;
+  const music = { state: { isPlaying: true }, fadeOut: async (sec) => { faded = sec; } };
+  let runBusy = false;
+  const cd = new Countdown({ cfg: {}, save: () => {}, music: () => music, busy: () => runBusy, now: () => t });
+  cd.setScreen(screen);
+  check('countdown settings are cleaned (minutes kept between 1 and 180, bad clock refused)',
+    cleanSettings({ minutes: 999 }).minutes === 180 && cleanSettings({ mode: 'clock', clock: '25:99' }).mode === 'minutes');
+  cd.start({ title: 'Starting soon', minutes: 5, fadeOut: 4, notices: 'Welcome\n\nPhones on silent' });
+  check('it starts: target 5 minutes ahead, window shown, notices split by line', cd.info().target === t + 300000 && screen.shown === 1 && cd.info().notices.length === 2);
+  t += 296500; cd.tick();
+  check('the music fades out so it ends at zero', faded !== null && faded <= 4, `fade ${faded}`);
+  t += 4000; cd.tick();
+  check('at zero it says done and keeps 0:00 up for a moment', cd.summary().active?.done === true && screen.hidden === 0);
+  t += 6000; cd.tick();
+  check('...then the window closes and the countdown ends', cd.active === null && screen.hidden === 1);
+  cd.start({ mode: 'clock', clock: '10:00' });
+  check('to a clock time: today at 10:00', cd.info().target === new Date(2026, 10, 22, 10, 0, 0).getTime());
+  cd.stop();
+  runBusy = true;
+  let err = null;
+  try { cd.start(); } catch (e) { err = e.message; }
+  check('it does not start while the run of show shows its own countdown', /run of show/i.test(err || ''));
+}
+
 // ---------------------------------------------------------------- headphone preview (stand-in helper)
 
 async function previewChecks() {
@@ -370,7 +453,9 @@ function editionChecks() {
   const order = ['lite', 'standard', 'extra'];
   const nested = order.every((e, i) => i === 0 || Object.keys(FEATURES[e]).every((f) => !FEATURES[order[i - 1]][f] || FEATURES[e][f]));
   check('each edition has everything the smaller one has (Lite ⊂ Standard ⊂ Extra)', nested);
-  check('Lite: no music, sound, display mode, cues or run of show', Object.values(FEATURES.lite).every((v) => v === false));
+  const liteOn = Object.entries(FEATURES.lite).filter(([, v]) => v).map(([k]) => k).sort().join(',');
+  check('Lite: only projector mode and the system volume on top of the slides (no music, output device, cues, countdown, run of show)', liteOn === 'displayMode,volume', liteOn);
+  check('Standard: the countdown on its own, but no run of show or stage display', FEATURES.standard.countdown && !FEATURES.standard.run && !FEATURES.standard.stage);
   check('only Extra has the run of show', FEATURES.extra.run && !FEATURES.standard.run);
   const saved = process.env.STAGIO_EDITION;
   process.env.STAGIO_EDITION = 'extra';
@@ -547,6 +632,17 @@ async function serverChecks() {
     check('the cue step for it only in Extra', !!types['audio.preview'] === !!ed.features.previewPro);
   }
 
+  // Mixer: Standard (basic) and Extra (full), on Windows; not in Lite.
+  const mxStatus = await post('/api/mixer', {}, JSON.stringify({ duck: { on: true } })).then((r) => r.status);
+  const stMx = await get('/api/state').then((r) => r.json());
+  if (!ed.features.mixer) check('Lite has no mixer', mxStatus === 403 && !stMx.mixer, `status ${mxStatus}`);
+  else if (stMx.mixer) {
+    check('the mixer is there, full only in Extra, the microphone off', stMx.mixer.pro === !!ed.features.mixerPro && stMx.mixer.mic.on === false);
+    const auxStatus = await post('/api/mixer', {}, JSON.stringify({ aux: { device: '' } })).then((r) => r.status);
+    check(ed.features.mixerPro ? 'Extra: the AUX output can be set' : 'Standard: no AUX output', ed.features.mixerPro ? auxStatus === 200 : auxStatus >= 400, `status ${auxStatus}`);
+    check('the mixer-scene cue step only in Extra', !!types['mixer.scene'] === !!ed.features.mixerPro);
+  }
+
   // No Spotify Web API (Premium) any more: its sign-in pages are gone.
   const gone = [await get('/spotify/login', { redirect: 'manual' }).then((r) => r.status), await get('/api/spotify/playlists').then((r) => r.status)];
   check('the Spotify Premium sign-in and its API are gone', gone.every((x) => x === 404), gone.join(' '));
@@ -665,8 +761,11 @@ async function serverChecks() {
   const status = (p, body = '{}', method = 'POST') => fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body }).then((r) => r.status);
   check('the state says which edition this is', ['lite', 'standard', 'extra'].includes(now.edition?.id) && /Stagio/.test(now.edition?.name || ''), `${now.edition?.name} ${now.edition?.label}`);
   if (!ed.features.music) {
-    const refused = [await status('/api/music/toggle'), await status('/api/cues', '[]', 'PUT'), await status('/api/audio/mute', '{"mute":false}'), await status('/api/display/mode', '{"mode":"extend"}')];
-    check('Lite refuses music, cues, sound and display mode', refused.every((x) => x === 403), refused.join(' '));
+    const refused = [await status('/api/music/toggle'), await status('/api/cues', '[]', 'PUT'), await status('/api/audio/device', '{"id":"x"}'), await status('/api/countdown', '{}'), await status('/api/display/mode', '{"mode":"extend"}')];
+    refused.pop(); // display mode: part of Lite now (checked below)
+    check('Lite refuses music, cues, choosing the output device and the countdown', refused.every((x) => x === 403), refused.join(' '));
+    const liteHas = [await status('/api/audio/volume', '{"value":"x"}'), await status('/api/display/mode', '{"mode":"none"}')];
+    check('Lite accepts the volume and projector mode (the requests are checked, not refused)', liteHas.every((x) => x !== 403), liteHas.join(' '));
   }
   // Stage display (Extra): its own PIN and key reach the stage display only (checked from the LAN
   // address, so this PC is not trusted as itself).
@@ -737,6 +836,8 @@ async function serverChecks() {
     configChecks();
     await autoCueChecks();
     await previewChecks();
+    await countdownChecks();
+    await mixerChecks();
     await fadeChecks();
     imageChecks();
     editionChecks();

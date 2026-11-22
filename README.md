@@ -26,8 +26,9 @@ moving to another edition keeps your settings, PIN, cues and runs of show.
 | | Stagio Lite | Stagio Standard | Stagio Extra |
 | --- | --- | --- | --- |
 | For | people presenting their own slides | one person running slides, music and the projector | the person running the whole event |
-| Slides, black/white screen, notes, timer, true thumbnails, phone remote, pre-show check, speed-up, offline fallbacks | yes | yes | yes |
-| Music from any player with fades, volume glides, audio output, projector mode, cues, automatic cues | | yes | yes |
+| Slides, black/white screen, notes, timer, true thumbnails, phone remote, pre-show check, speed-up, offline fallbacks, projector mode, system volume | yes | yes | yes |
+| Music from any player with fades, volume glides, choosing the audio output, cues, automatic cues, opening countdown | | yes | yes |
+| Mixer (Windows): mic to the speakers with EQ and gate, faders and meters, music dips while someone speaks | | basic | full: AUX output, full EQ, scenes |
 | Headphone preview (Windows): other apps only in your headphones | | basic | full |
 | Run of show, opening countdown, stage display for the speaker, messages to the stage | | | yes |
 
@@ -53,6 +54,17 @@ A fix raises the last number, a new feature the middle one.
 - **Output** (Standard, Extra): Windows audio output device, system volume with glides, projector
   mode (PC only / duplicate / extend / projector only), which screen the show uses, hiding
   PowerPoint's presenter view.
+- **Mixer** (Windows; basic in Standard, full in Extra): stands in for part of a PA when there is
+  none. The microphone goes through Stagio to the speakers (about 30 ms delay) with an EQ preset
+  and a noise gate; faders, mutes and level meters for the microphone, the music, the slide videos
+  and the master; the music dips while someone speaks and comes back after a pause. Extra adds an
+  AUX output (the mic, the music or the slide videos there as well or instead), a full microphone
+  EQ (low cut, low, mid, high, gain, gate), how far and how fast the music dips, and scenes that
+  save the mixer and are recalled by hand or from a cue. Music and slide videos are other programs,
+  so their level is their own volume and they have no EQ here.
+- **Opening countdown** (Standard, Extra): full screen on the projector to a number of minutes or a
+  clock time, with a title and notices; the music can fade out to end at zero. In Extra it is also
+  a part of the run of show.
 - **Headphone preview** (Windows; basic in Standard, full in Extra): while it is on, the music app
   and PowerPoint stay on the speakers and every other app plays only in your headphones, so you can
   listen to the next song or video before the room hears it. Plugging the headphones in offers to

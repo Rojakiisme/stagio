@@ -35,7 +35,49 @@ button, select, input { font: inherit; color: inherit; }
 /* Lite / Standard / Extra: what this edition doesn't have is not shown (body classes set by app.js) */
 body.no-music .needs-music, body.no-audio .needs-audio, body.no-displayMode .needs-displayMode,
 body.no-cues .needs-cues, body.no-run .needs-run, body.no-stage .needs-stage,
-body.no-preview .needs-preview, body.no-previewPro .needs-previewPro { display: none !important; }
+body.no-preview .needs-preview, body.no-previewPro .needs-previewPro,
+body.no-volume .needs-volume, body.no-countdown .needs-countdown,
+body.no-mixer .needs-mixer, body.no-mixerPro .needs-mixerPro { display: none !important; }
+/* mixer */
+.mixer { border: 1px solid var(--line); padding: 8px 10px 10px; margin-bottom: 12px; background: var(--surface); }
+.mx-h { display: flex; align-items: center; gap: 8px; }
+.mx-h .grow { flex: 1; }
+.mx-scenes { display: flex; gap: 4px; }
+.mx-scenes select { max-width: 130px; height: 24px; font-size: 12px; }
+.mx-mic { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.mx-mic select { flex: 1; min-width: 90px; height: 26px; font-size: 12px; }
+#mxMicOn.on { background: var(--red); color: #fff; border-color: var(--red); }
+.mx-strips { margin-top: 8px; display: grid; gap: 6px; }
+.mx-row { display: grid; grid-template-columns: 52px 1fr 34px auto auto; align-items: center; gap: 6px; }
+.mx-row .nm { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); }
+.mx-row .fv { position: relative; }
+.mx-row .fv input { width: 100%; display: block; }
+.mx-row .mt { position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--raise); overflow: hidden; }
+.mx-row .mt i { display: block; height: 100%; width: 0; background: var(--green); transition: width .12s linear; }
+.mx-row .mt i.hot { background: var(--amber); }
+.mx-row .mt i.clip { background: var(--red); }
+.mx-row output { font: 11px var(--mono); text-align: right; color: var(--dim); }
+.mx-row .btn.sm { height: 22px; padding: 0 7px; }
+.mx-row .btn.sm.on { background: var(--red); color: #fff; border-color: var(--red); }
+.mx-row .rt { display: flex; gap: 2px; }
+.mx-row .rt .btn.sm.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+.mx-row.off { opacity: .5; }
+.mx-duck { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+.mx-duck.on-now { color: var(--amber); }
+.mx-pro .pv-row input[type=range] { flex: 1; }
+.mx-pro .pv-row input[type=number] { width: 58px; }
+.eq-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.eq-row > .label { flex: none; min-width: 84px; }
+.eq-row input[type=range] { flex: 1; }
+.eq-row input[type=number] { width: 76px; }
+.eq-row output { min-width: 40px; text-align: right; }
+#eqPresets { margin-top: 6px; }
+.cd-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.cd-row > .label { flex: none; min-width: 64px; }
+.cd-row input[type=text], .cd-row textarea { flex: 1; min-width: 0; }
+.cd-row input[type=number] { width: 70px; }
+.cd-notices { align-items: flex-start; }
+#btnCountdown.lit { background: var(--amber); color: #000; border-color: var(--amber); }
 .dim { color: var(--dim); }
 .grow { flex: 1; }
 p { margin: 0 0 8px; }

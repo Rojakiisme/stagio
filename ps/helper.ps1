@@ -467,6 +467,354 @@ namespace Stagio {
     }
   }
 
+  // ---- mixer: the microphone through Stagio (gain, EQ, noise gate) to MIX and AUX, level meters ----
+  // Stagio carries the mic sound itself (WASAPI, shared mode) instead of Windows' "Listen to this
+  // device", so it can EQ it, gate it, send it to two outputs and tell when someone speaks (the
+  // music dips). It runs on its own thread; the helper's command loop never waits for it.
+  [ComImport, Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioClient {
+    [PreserveSig] int Initialize(int shareMode, uint streamFlags, long bufferDuration, long periodicity, IntPtr format, IntPtr sessionGuid);
+    [PreserveSig] int GetBufferSize(out uint frames);
+    [PreserveSig] int GetStreamLatency(out long latency);
+    [PreserveSig] int GetCurrentPadding(out uint padding);
+    [PreserveSig] int IsFormatSupported(int shareMode, IntPtr format, out IntPtr closest);
+    [PreserveSig] int GetMixFormat(out IntPtr format);
+    [PreserveSig] int GetDevicePeriod(out long defaultPeriod, out long minimumPeriod);
+    [PreserveSig] int Start();
+    [PreserveSig] int Stop();
+    [PreserveSig] int Reset();
+    [PreserveSig] int SetEventHandle(IntPtr handle);
+    [PreserveSig] int GetService(ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object service);
+  }
+  [ComImport, Guid("C8ADBD64-E71E-48a0-A4DE-185C395CD317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioCaptureClient {
+    [PreserveSig] int GetBuffer(out IntPtr data, out uint frames, out uint flags, out ulong devicePosition, out ulong qpcPosition);
+    [PreserveSig] int ReleaseBuffer(uint frames);
+    [PreserveSig] int GetNextPacketSize(out uint frames);
+  }
+  [ComImport, Guid("F294ACFC-3146-4483-A7BF-ADDCA7C260E2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioRenderClient {
+    [PreserveSig] int GetBuffer(uint frames, out IntPtr data);
+    [PreserveSig] int ReleaseBuffer(uint frames, uint flags);
+  }
+  [ComImport, Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioMeterInformation {
+    [PreserveSig] int GetPeakValue(out float peak);
+  }
+
+  /// One biquad filter (RBJ audio EQ cookbook), mono, float.
+  public class Biquad {
+    double b0 = 1, b1, b2, a1, a2, z1, z2;
+    public static Biquad HighPass(double fs, double f, double q) { Biquad b = new Biquad(); double w = 2 * Math.PI * f / fs, c = Math.Cos(w), al = Math.Sin(w) / (2 * q), a0 = 1 + al; b.b0 = (1 + c) / 2 / a0; b.b1 = -(1 + c) / a0; b.b2 = (1 + c) / 2 / a0; b.a1 = -2 * c / a0; b.a2 = (1 - al) / a0; return b; }
+    public static Biquad Peak(double fs, double f, double q, double db) { Biquad b = new Biquad(); double A = Math.Pow(10, db / 40), w = 2 * Math.PI * f / fs, c = Math.Cos(w), al = Math.Sin(w) / (2 * q), a0 = 1 + al / A; b.b0 = (1 + al * A) / a0; b.b1 = -2 * c / a0; b.b2 = (1 - al * A) / a0; b.a1 = -2 * c / a0; b.a2 = (1 - al / A) / a0; return b; }
+    public static Biquad Shelf(double fs, double f, double db, bool high) {
+      Biquad b = new Biquad(); double A = Math.Pow(10, db / 40), w = 2 * Math.PI * f / fs, c = Math.Cos(w), s = Math.Sin(w), al = s / 2 * Math.Sqrt(2), sq = 2 * Math.Sqrt(A) * al;
+      double a0;
+      if (high) { a0 = (A + 1) - (A - 1) * c + sq; b.b0 = A * ((A + 1) + (A - 1) * c + sq) / a0; b.b1 = -2 * A * ((A - 1) + (A + 1) * c) / a0; b.b2 = A * ((A + 1) + (A - 1) * c - sq) / a0; b.a1 = 2 * ((A - 1) - (A + 1) * c) / a0; b.a2 = ((A + 1) - (A - 1) * c - sq) / a0; }
+      else { a0 = (A + 1) + (A - 1) * c + sq; b.b0 = A * ((A + 1) - (A - 1) * c + sq) / a0; b.b1 = 2 * A * ((A - 1) - (A + 1) * c) / a0; b.b2 = A * ((A + 1) - (A - 1) * c - sq) / a0; b.a1 = -2 * ((A - 1) + (A + 1) * c) / a0; b.a2 = ((A + 1) + (A - 1) * c - sq) / a0; }
+      return b;
+    }
+    public double Run(double x) { double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+  }
+
+  public class MicSettings {
+    public bool on; public string device = ""; public string mix = ""; public string aux = "";
+    public bool toMix = true; public bool toAux; public double gainDb; public double level = 0.8; public bool mute;
+    public double[] eq = new double[0];   // lowCutHz, lowShelfDb, midHz, midDb, highShelfDb (0 = flat / off)
+    public double gateDb = -55;           // below this the mic is closed (noise between words)
+  }
+
+  public static class Mixer {
+    static readonly object gate = new object();
+    static MicSettings want = new MicSettings();
+    static Thread engine;
+    static volatile bool stopFlag;
+    static volatile int generation;            // bumps when the engine must restart (devices changed)
+    public static volatile string Error = "";
+    public static volatile bool Running;
+    public static volatile float InPeak, OutPeak;
+    public static volatile bool Voice;
+    public static volatile int Glitches;       // render buffer ran dry (sound gap)
+    public static volatile int LatencyMs;
+    // meters pushed to Stagio (one JSON line on the helper's output, a few times a second)
+    static volatile bool metersOn;
+    static string[] meterApps = new string[0];
+    static Thread meterThread;
+
+    const uint EVENTCALLBACK = 0x00040000, AUTOCONVERT = 0x80000000, SRC_QUALITY = 0x08000000;
+    static readonly Guid FloatSub = new Guid("00000003-0000-0010-8000-00aa00389b71");
+    static readonly Guid PcmSub = new Guid("00000001-0000-0010-8000-00aa00389b71");
+
+    static void Write(string json) { lock (Console.Out) { Console.Out.WriteLine(json); Console.Out.Flush(); } }
+
+    public static void SetMic(bool on, string device, string mix, string aux, bool toMix, bool toAux, double gainDb, double level, bool mute, double[] eq, double gateDb) {
+      MicSettings s = new MicSettings();
+      s.on = on; s.device = device ?? ""; s.mix = mix ?? ""; s.aux = aux ?? ""; s.toMix = toMix; s.toAux = toAux;
+      s.gainDb = Math.Max(-20, Math.Min(30, gainDb)); s.level = Math.Max(0, Math.Min(1.5, level)); s.mute = mute;
+      s.eq = eq ?? new double[0]; s.gateDb = Math.Max(-90, Math.Min(-10, gateDb));
+      lock (gate) {
+        bool restart = want.on != s.on || want.device != s.device || want.mix != s.mix || want.aux != s.aux || want.toAux != s.toAux || want.toMix != s.toMix;
+        want = s;
+        if (!s.on) { Stop(); return; }
+        if (restart || engine == null || !engine.IsAlive) { Stop(); Start(); }
+        else generation++; // same devices: the running engine picks up the new levels and EQ
+      }
+    }
+
+    static void Start() {
+      stopFlag = false; Error = "";
+      engine = new Thread(Run); engine.IsBackground = true; engine.Priority = ThreadPriority.Highest;
+      engine.SetApartmentState(ApartmentState.MTA);
+      engine.Start();
+    }
+    public static void Stop() {
+      stopFlag = true;
+      Thread t = engine;
+      if (t != null && t.IsAlive && t != Thread.CurrentThread) t.Join(1500);
+      engine = null; Running = false; InPeak = 0; OutPeak = 0; Voice = false;
+    }
+
+    static IMMDevice Device(int flow, string id) {
+      IMMDeviceEnumerator en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorCom());
+      IMMDevice d;
+      int hr = string.IsNullOrEmpty(id) ? en.GetDefaultAudioEndpoint(flow, 0, out d) : en.GetDevice(id, out d);
+      if (hr != 0 || d == null) throw new Exception(flow == 1 ? "The microphone was not found" : "The output was not found");
+      return d;
+    }
+    static IAudioClient Client(IMMDevice d) {
+      Guid iid = typeof(IAudioClient).GUID; object o;
+      int hr = d.Activate(ref iid, 23, IntPtr.Zero, out o);
+      if (hr != 0) throw new Exception("Could not open the sound device (0x" + hr.ToString("X8") + ")");
+      return (IAudioClient)o;
+    }
+    static void Check(int hr, string what) { if (hr != 0) throw new Exception(what + " (0x" + hr.ToString("X8") + ")"); }
+
+    class Out { public IAudioClient client; public IAudioRenderClient render; public int channels; public uint size; public IntPtr fmt; }
+
+    static Out OpenOut(string id, int rate) {
+      IMMDevice d = Device(0, id);
+      Out o = new Out(); o.client = Client(d);
+      IntPtr mix; Check(o.client.GetMixFormat(out mix), "Output format");
+      int ch = Marshal.ReadInt16(mix, 2);
+      int mask = Marshal.ReadInt16(mix, 0) == unchecked((short)0xFFFE) ? Marshal.ReadInt32(mix, 20) : 0;
+      Marshal.FreeCoTaskMem(mix);
+      // float, the output's channels, the microphone's rate: Windows converts the rate (AUTOCONVERT)
+      IntPtr f = Marshal.AllocCoTaskMem(40);
+      Marshal.WriteInt16(f, 0, unchecked((short)0xFFFE)); Marshal.WriteInt16(f, 2, (short)ch); Marshal.WriteInt32(f, 4, rate);
+      Marshal.WriteInt32(f, 8, rate * ch * 4); Marshal.WriteInt16(f, 12, (short)(ch * 4)); Marshal.WriteInt16(f, 14, 32); Marshal.WriteInt16(f, 16, 22);
+      Marshal.WriteInt16(f, 18, 32); Marshal.WriteInt32(f, 20, mask == 0 ? (ch == 1 ? 4 : 3) : mask);
+      byte[] g = FloatSub.ToByteArray(); Marshal.Copy(g, 0, IntPtr.Add(f, 24), 16);
+      Check(o.client.Initialize(0, AUTOCONVERT | SRC_QUALITY, 600000, 0, f, IntPtr.Zero), "Could not open the output");
+      Check(o.client.GetBufferSize(out o.size), "Output buffer");
+      Guid rid = typeof(IAudioRenderClient).GUID; object r; Check(o.client.GetService(ref rid, out r), "Output service");
+      o.render = (IAudioRenderClient)r; o.channels = ch; o.fmt = f;
+      // about 20 ms of silence first, so the first packets don't run it dry
+      uint pre = (uint)(rate / 50); IntPtr buf;
+      if (o.render.GetBuffer(pre, out buf) == 0) o.render.ReleaseBuffer(pre, 2);
+      Check(o.client.Start(), "Could not start the output");
+      return o;
+    }
+
+    static List<Biquad> Chain(double fs, double[] eq) {
+      List<Biquad> c = new List<Biquad>();
+      if (eq == null || eq.Length < 5) return c;
+      if (eq[0] > 0) { c.Add(Biquad.HighPass(fs, eq[0], 0.707)); c.Add(Biquad.HighPass(fs, eq[0], 0.707)); } // 24 dB/oct low cut
+      if (eq[1] != 0) c.Add(Biquad.Shelf(fs, 150, eq[1], false));
+      if (eq[3] != 0) c.Add(Biquad.Peak(fs, Math.Max(100, Math.Min(10000, eq[2])), 1.0, eq[3]));
+      if (eq[4] != 0) c.Add(Biquad.Shelf(fs, 7000, eq[4], true));
+      return c;
+    }
+
+    static void Run() {
+      List<Out> outs = new List<Out>();
+      IAudioClient cap = null;
+      IntPtr evt = IntPtr.Zero;
+      try {
+        MicSettings s; lock (gate) s = want;
+        IMMDevice md = Device(1, s.device);
+        cap = Client(md);
+        IntPtr mf; Check(cap.GetMixFormat(out mf), "Microphone format");
+        int ch = Marshal.ReadInt16(mf, 2), rate = Marshal.ReadInt32(mf, 4), bits = Marshal.ReadInt16(mf, 14);
+        bool isFloat = Marshal.ReadInt16(mf, 0) == 3;
+        if (Marshal.ReadInt16(mf, 0) == unchecked((short)0xFFFE)) { byte[] g = new byte[16]; Marshal.Copy(IntPtr.Add(mf, 24), g, 0, 16); isFloat = new Guid(g) == FloatSub; if (!isFloat && new Guid(g) != PcmSub) throw new Exception("This microphone's format is not supported"); }
+        if (!isFloat && bits != 16) throw new Exception("This microphone's format is not supported");
+        Check(cap.Initialize(0, EVENTCALLBACK, 200000, 0, mf, IntPtr.Zero), "Could not open the microphone");
+        Marshal.FreeCoTaskMem(mf);
+        evt = CreateEvent(IntPtr.Zero, false, false, null);
+        Check(cap.SetEventHandle(evt), "Microphone event");
+        Guid cid = typeof(IAudioCaptureClient).GUID; object co; Check(cap.GetService(ref cid, out co), "Microphone service");
+        IAudioCaptureClient cc = (IAudioCaptureClient)co;
+        if (s.toMix) outs.Add(OpenOut(s.mix, rate));
+        if (s.toAux && !string.IsNullOrEmpty(s.aux) && s.aux != s.mix) outs.Add(OpenOut(s.aux, rate));
+        if (outs.Count == 0) throw new Exception("Choose where the microphone goes");
+        Check(cap.Start(), "Could not start the microphone");
+        Running = true; Glitches = 0;
+        long lat; outs[0].client.GetStreamLatency(out lat); LatencyMs = (int)(lat / 10000) + 20 + 10;
+
+        int gen = -1; List<Biquad> chain = null; double gain = 1, level = 0.8, gateLin = 0.002;
+        double env = 0, gateGain = 0, hold = 0, holdMax = rate * 0.25, attack = 1 - Math.Exp(-1.0 / (rate * 0.002)), release = 1 - Math.Exp(-1.0 / (rate * 0.15));
+        double voiceUntil = 0; long samples = 0; float inPk = 0, outPk = 0; long meterAt = 0;
+        bool voice = false;
+        float[] mono = new float[rate];
+        float[] inF = new float[rate * ch]; short[] inS = new short[rate * ch]; float[] outBuf = new float[rate * 8];
+        while (!stopFlag) {
+          if (gen != generation) {
+            lock (gate) s = want;
+            gen = generation; chain = Chain(rate, s.eq);
+            gain = Math.Pow(10, s.gainDb / 20); level = s.mute ? 0 : s.level; gateLin = Math.Pow(10, s.gateDb / 20);
+          }
+          WaitForSingleObject(evt, 200);
+          uint next;
+          while (cc.GetNextPacketSize(out next) == 0 && next > 0) {
+            IntPtr data; uint frames, flags; ulong p1, p2;
+            int hr = cc.GetBuffer(out data, out frames, out flags, out p1, out p2);
+            if (hr != 0) throw new Exception("The microphone stopped (0x" + hr.ToString("X8") + ")");
+            int n = (int)Math.Min(frames, (uint)mono.Length);
+            bool silent = (flags & 2) != 0;
+            if (!silent) { if (isFloat) Marshal.Copy(data, inF, 0, n * ch); else Marshal.Copy(data, inS, 0, n * ch); }
+            for (int i = 0; i < n; i++) {
+              double x = 0;
+              if (!silent) {
+                if (isFloat) { for (int c = 0; c < ch; c++) x += inF[i * ch + c]; }
+                else { for (int c = 0; c < ch; c++) x += inS[i * ch + c] / 32768.0; }
+                x /= ch;
+              }
+              x *= gain;
+              for (int k = 0; k < chain.Count; k++) x = chain[k].Run(x);
+              double a = Math.Abs(x);
+              if (a > inPk) inPk = (float)a;
+              env += (a > env ? attack : release) * (a - env);
+              // noise gate: open above the threshold, held a quarter second, closes softly
+              if (env > gateLin) hold = holdMax; else if (hold > 0) hold--;
+              double tg = hold > 0 ? 1 : 0;
+              gateGain += (tg > gateGain ? 0.01 : 0.0005) * (tg - gateGain);
+              double y = x * gateGain * level;
+              if (y > 0.98) y = 0.98 + (y - 0.98) * 0.1; else if (y < -0.98) y = -0.98 + (y + 0.98) * 0.1;
+              if (y > 1) y = 1; else if (y < -1) y = -1;
+              if (Math.Abs(y) > outPk) outPk = (float)Math.Abs(y);
+              mono[i] = (float)y;
+              if (env > gateLin * 2.5) voiceUntil = samples + rate * 0.3;
+              samples++;
+            }
+            cc.ReleaseBuffer(frames);
+            foreach (Out o in outs) {
+              uint pad; if (o.client.GetCurrentPadding(out pad) != 0) throw new Exception("The output stopped");
+              if (pad == 0) Glitches++;
+              // The mic and the output never run at exactly the same speed: keep 10-50 ms queued.
+              // Short: repeat the last sample a little (a click-free stretch); long: drop the oldest part.
+              uint low = (uint)(rate / 100), high = (uint)(rate / 20);
+              int start = 0, extra = 0;
+              if (pad + (uint)n > high) start = (int)Math.Min((uint)n, pad + (uint)n - high);
+              else if (pad < low && n > 0) extra = (int)(low - pad);
+              uint room = o.size - pad, m = (uint)Math.Min(room, (uint)(n - start + extra));
+              IntPtr b; if (m == 0 || o.render.GetBuffer(m, out b) != 0) continue;
+              int len = (int)m * o.channels;
+              if (len > outBuf.Length) outBuf = new float[len];
+              for (int i = 0; i < m; i++) { float sv = mono[Math.Max(0, Math.Min(n - 1, start + i - extra))]; for (int c = 0; c < o.channels; c++) outBuf[i * o.channels + c] = sv; }
+              Marshal.Copy(outBuf, 0, b, len);
+              o.render.ReleaseBuffer(m, 0);
+            }
+          }
+          bool v = samples < voiceUntil;
+          long now = Environment.TickCount;
+          if (v != voice) { voice = v; Voice = v; Write("{\"evt\":\"voice\",\"on\":" + (v ? "true" : "false") + "}"); }
+          if (now - meterAt >= 100) { InPeak = inPk; OutPeak = outPk; inPk = 0; outPk = 0; meterAt = now; }
+        }
+      } catch (Exception e) {
+        Error = e.Message;
+        Write("{\"evt\":\"mixerError\",\"error\":" + Quote(e.Message) + "}");
+      } finally {
+        try { if (cap != null) cap.Stop(); } catch { }
+        foreach (Out o in outs) { try { o.client.Stop(); } catch { } try { Marshal.FreeCoTaskMem(o.fmt); } catch { } }
+        if (evt != IntPtr.Zero) CloseHandle(evt);
+        Running = false; Voice = false; InPeak = 0; OutPeak = 0;
+      }
+    }
+
+    /// The microphones (and other inputs) Windows has: id, name, default.
+    public static List<AudioDevice> Inputs() {
+      List<AudioDevice> r = new List<AudioDevice>();
+      IMMDeviceEnumerator en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorCom());
+      string def = null; IMMDevice dd; if (en.GetDefaultAudioEndpoint(1, 0, out dd) == 0) dd.GetId(out def);
+      IMMDeviceCollection col; if (en.EnumAudioEndpoints(1, 1, out col) != 0) return r;
+      int count; col.GetCount(out count);
+      for (int i = 0; i < count; i++) {
+        IMMDevice d; if (col.Item(i, out d) != 0) continue;
+        string id; d.GetId(out id);
+        AudioDevice a = new AudioDevice(); a.Id = id; a.IsDefault = id == def; a.Name = "(microphone)";
+        IPropertyStore st; if (d.OpenPropertyStore(0, out st) == 0) {
+          PROPERTYKEY k = new PROPERTYKEY(); k.fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"); k.pid = 14; PROPVARIANT pv;
+          if (st.GetValue(ref k, out pv) == 0 && pv.vt == 31) a.Name = Marshal.PtrToStringUni(pv.pointerValue);
+        }
+        r.Add(a);
+      }
+      return r;
+    }
+
+    static string Quote(string s) { return "\"" + (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""; }
+
+    /// Level meters pushed a few times a second while the mixer is shown: mic in/out, the output
+    /// device, and the apps (music, PowerPoint) by process name.
+    public static void Meters(bool on, string[] apps) {
+      meterApps = apps ?? new string[0];
+      metersOn = on;
+      if (on && (meterThread == null || !meterThread.IsAlive)) {
+        meterThread = new Thread(MeterLoop); meterThread.IsBackground = true;
+        meterThread.SetApartmentState(ApartmentState.MTA); meterThread.Start();
+      }
+    }
+    static void MeterLoop() {
+      Dictionary<string, List<IAudioMeterInformation>> byApp = new Dictionary<string, List<IAudioMeterInformation>>();
+      IAudioMeterInformation master = null;
+      long listedAt = 0;
+      while (metersOn) {
+        try {
+          long now = Environment.TickCount;
+          if (now - listedAt > 2000) {
+            listedAt = now; byApp.Clear();
+            foreach (string a in meterApps) byApp[a] = new List<IAudioMeterInformation>();
+            IMMDeviceEnumerator en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorCom());
+            IMMDevice def; if (en.GetDefaultAudioEndpoint(0, 1, out def) == 0) { Guid mg = typeof(IAudioMeterInformation).GUID; object mo; if (def.Activate(ref mg, 23, IntPtr.Zero, out mo) == 0) master = (IAudioMeterInformation)mo; }
+            IMMDeviceCollection col; if (en.EnumAudioEndpoints(0, 1, out col) == 0) {
+              int count; col.GetCount(out count);
+              for (int i = 0; i < count; i++) {
+                IMMDevice dev; if (col.Item(i, out dev) != 0) continue;
+                Guid iid = typeof(IAudioSessionManager2).GUID; object o;
+                if (dev.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) continue;
+                IAudioSessionEnumerator se; if (((IAudioSessionManager2)o).GetSessionEnumerator(out se) != 0) continue;
+                int n; se.GetCount(out n);
+                for (int j = 0; j < n; j++) {
+                  IAudioSessionControl2 ctl; if (se.GetSession(j, out ctl) != 0) continue;
+                  uint pid; if (ctl.GetProcessId(out pid) != 0 || pid == 0) continue;
+                  string name; try { using (System.Diagnostics.Process p = System.Diagnostics.Process.GetProcessById((int)pid)) name = p.ProcessName; } catch { continue; }
+                  foreach (string a in meterApps) if (string.Equals(a, name, StringComparison.OrdinalIgnoreCase)) byApp[a].Add((IAudioMeterInformation)ctl);
+                }
+              }
+            }
+          }
+          System.Text.StringBuilder sb = new System.Text.StringBuilder("{\"evt\":\"meters\",\"mic\":[");
+          sb.Append(Running ? InPeak.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "0").Append(',');
+          sb.Append(Running ? OutPeak.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "0").Append("],\"voice\":").Append(Voice ? "true" : "false");
+          float mp = 0; if (master != null) master.GetPeakValue(out mp);
+          sb.Append(",\"master\":").Append(mp.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(",\"apps\":{");
+          bool first = true;
+          foreach (KeyValuePair<string, List<IAudioMeterInformation>> kv in byApp) {
+            float pk = 0; foreach (IAudioMeterInformation m in kv.Value) { float v; try { if (m.GetPeakValue(out v) == 0 && v > pk) pk = v; } catch { } }
+            if (!first) sb.Append(','); first = false;
+            sb.Append(Quote(kv.Key)).Append(':').Append(pk.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+          }
+          sb.Append("},\"glitches\":").Append(Glitches).Append('}');
+          Write(sb.ToString());
+        } catch { }
+        Thread.Sleep(200);
+      }
+    }
+
+    [DllImport("kernel32.dll")] static extern IntPtr CreateEvent(IntPtr a, bool manual, bool initial, string name);
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  }
+
   public static class Audio {
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PROPVARIANT pvar);
 
@@ -1592,6 +1940,7 @@ function Preview-Apply($a) {
   $on = [bool]$a.on
   $phones = [string]$a.phones
   $room = [string]$a.room
+  $aux = [string]$a.aux    # the mixer's AUX output (Extra): apps sent there whatever the preview does
   $stay = @($a.stay | ForEach-Object { ([string]$_).ToLowerInvariant() })
   $over = @{}
   if ($a.overrides) { foreach ($k in $a.overrides.PSObject.Properties) { $over[$k.Name.ToLowerInvariant()] = [string]$k.Value } }
@@ -1624,12 +1973,14 @@ function Preview-Apply($a) {
     if ($p.SessionId -ne $mine -or (-not $a.only -and $script:previewSkip -contains $p.ProcessName)) { continue }
     $name = $p.ProcessName
     $key = $name.ToLowerInvariant()
-    if (-not $on -and -not $touched.Contains($name)) { continue }
+    $toAux = $aux -and $over.ContainsKey($key) -and $over[$key] -eq 'aux'
+    if (-not $on -and -not $toAux -and -not $touched.Contains($name)) { continue }
     $route = 'default'
-    if ($on) {
+    if ($toAux) { $route = 'aux' }
+    elseif ($on) {
       $route = if ($over.ContainsKey($key)) { $over[$key] } elseif ($stay -contains $key) { 'room' } else { 'phones' }
     }
-    $target = if ($route -eq 'phones') { $phones } elseif ($route -eq 'room') { $room } else { '' }
+    $target = if ($route -eq 'phones') { $phones } elseif ($route -eq 'room') { $room } elseif ($route -eq 'aux') { $aux } else { '' }
     $cur = [Stagio.AudioRoute]::RouteOf($p.Id)
     if ($cur -ne $target) {
       if ([Stagio.AudioRoute]::Route($p.Id, $target) -eq 0) { $changed++ }
@@ -1650,6 +2001,27 @@ function Preview-Apply($a) {
     apps      = @($apps.Values | Sort-Object { -not $_.active }, { $_.label })
     touched   = @($touched)
   }
+}
+
+# ---------------- Mixer (Standard basic, Extra full) ----------------
+# The microphone through Stagio (gain, EQ, noise gate) to MIX and AUX, level meters, and the
+# level of the slide videos (PowerPoint). The engine and the meters run on their own threads
+# ([Stagio.Mixer]); they report on this helper's output as {"evt": ...} lines.
+function Mixer-State {
+  return @{
+    running   = [Stagio.Mixer]::Running
+    error     = [Stagio.Mixer]::Error
+    latencyMs = [Stagio.Mixer]::LatencyMs
+    glitches  = [Stagio.Mixer]::Glitches
+    voice     = [Stagio.Mixer]::Voice
+  }
+}
+function Mixer-Mic($a) {
+  $eq = [double[]]@(0, 0, 1000, 0, 0)
+  if ($a.eq) { $eq = [double[]]@($a.eq | ForEach-Object { [double]$_ }) }
+  [Stagio.Mixer]::SetMic([bool]$a.on, [string]$a.device, [string]$a.mix, [string]$a.aux, [bool]$a.toMix, [bool]$a.toAux,
+    [double]$a.gainDb, [double]$a.level, [bool]$a.mute, $eq, [double]$(if ($null -ne $a.gateDb) { $a.gateDb } else { -55 }))
+  return Mixer-State
 }
 
 # ---------------- Music: whichever app plays it (no account or sign-in needed) ----------------
@@ -2531,6 +2903,14 @@ function Invoke-Command2($cmd, $a) {
     'show.compareWindow' { return [Stagio.ShowCapture]::CompareWindow([long]$a.hwnd, [double]$a.ratio, [string]$a.ref) }   # tests
     'sys.activity'  { $x = [Stagio.ShowCapture]::Activity() -split '\|'; return @{ app = $x[0]; idleMs = [long]$x[1] } }
     'preview.apply' { return Preview-Apply $a }
+    'mixer.mic'     { return Mixer-Mic $a }
+    'mixer.state'   { return Mixer-State }
+    'mixer.meters'  { [Stagio.Mixer]::Meters([bool]$a.on, [string[]]@($a.apps | Where-Object { $_ })); return $true }
+    'mixer.inputs'  { return @([Stagio.Mixer]::Inputs() | ForEach-Object { @{ id = $_.Id; name = $_.Name; isDefault = $_.IsDefault } }) }
+    'mixer.appVolume' {
+      if ($null -ne $a.value) { [void][Stagio.AppVolume]::Set([string]$a.name, [int]$a.value) }
+      return [Stagio.AppVolume]::Get([string]$a.name)
+    }
     'music.state'   { return Music-State $a }
     'music.do'      { return Music-Do $a }
     'music.launch'  { return Music-Launch $a }
