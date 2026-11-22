@@ -34,9 +34,7 @@
     <button class="btn sm needs-countdown" id="btnCountdown" title="Opening countdown on the projector">Countdown</button>
     <button class="btn sm needs-stage" id="btnStage" title="Stage display: messages to the speaker">Stage</button>
     <button class="btn sm desktop-only" id="btnRemote">Remote</button>
-    <button class="btn sm desktop-only" id="btnHelp">Keys</button>
-    <button class="btn sm desktop-only" id="btnLayout">Layout</button>
-    <button class="btn sm desktop-only" id="btnSettings">Settings</button>
+    <button class="btn sm desktop-only" id="btnSettings" title="Layout, projector, keys, screen (? shows the keys)">Settings</button>
     <!-- phone / tablet: keep the screen on, hide the browser bars -->
     <button class="btn sm touch-only" id="btnAwake" title="Keep this screen on">Awake</button>
     <button class="btn sm touch-only hidden" id="btnFull" title="Full screen">Full</button>
@@ -209,7 +207,7 @@
           </span>
           <div class="seg sm" id="mxMode"><button data-mx-on="1">On</button><button data-mx-on="0">Off</button></div>
         </div>
-        <p class="hint" id="mxOff">On: a fader, mute and level meter for the microphone, the music, the slide videos and the master. The microphone can go straight to the speakers, and the music dips while someone speaks.</p>
+        <p class="hint" id="mxOff" title="A fader, mute and level meter for the microphone, the music, the slide videos and the master; the microphone straight to the speakers; the music dips while someone speaks.">Faders, meters and the microphone to the speakers.</p>
         <div id="mxMain" class="hidden">
           <div class="mx-mic">
             <button class="btn sm" id="mxMicOn" title="Microphone to the speakers">Mic off</button>
@@ -219,10 +217,6 @@
           </div>
           <div class="mx-strips" id="mxStrips"></div>
           <label class="mx-duck"><input type="checkbox" id="mxDuck"> Music dips while someone speaks</label>
-          <div class="needs-mixerPro mx-pro">
-            <div class="pv-row"><span class="label">Dip by</span><input type="range" min="10" max="95" id="mxDepth"><output class="mono" id="mxDepthOut"></output><span class="label">back after</span><input type="number" class="mono" min="0.3" max="10" step="0.1" id="mxRelease"><span class="dim">s</span></div>
-            <div class="pv-row"><span class="label">AUX out</span><select id="mxAux"><option value="">No AUX output</option></select></div>
-          </div>
           <p class="hint" id="mxHint"></p>
         </div>
       </div>
@@ -253,9 +247,7 @@
           </div>
         </div>
         <div class="needs-previewPro pv-pro">
-          <label class="pv-row"><span class="label">Speakers</span><select id="pvRoom"><option value="">Default output</option></select></label>
           <div class="list pv-apps" id="pvApps"></div>
-          <label class="pv-keep"><span class="label">Always on the speakers</span><input type="text" id="pvKeep" placeholder="Program names, e.g. Teams, obs64" title="Programs that stay on the speakers besides the music app and PowerPoint, separated by commas"></label>
         </div>
         <p class="hint" id="pvHint"></p>
       </div>
@@ -269,19 +261,7 @@
           <button data-mode="external">Projector</button>
         </div>
       </div>
-      <div id="monitorGroup">
-        <div class="label gap">Show slides on</div>
-        <select id="monitorSelect"></select>
-      </div>
       <p class="hint" id="screensHint"></p>
-      <div id="presenterGroup">
-        <div class="label gap">PowerPoint presenter view</div>
-        <div class="seg" id="presenterModes">
-          <button data-pv="hide">Hide</button>
-          <button data-pv="show">Show</button>
-        </div>
-        <p class="hint">With a projector connected, PowerPoint opens its own Presenter View on this screen, on top of Stagio. Hide keeps it away. Applies the next time a show starts.</p>
-      </div>
     </section>
     </div>
   </main>
@@ -401,9 +381,83 @@
     </div>
   </div>
 
-  <dialog id="dlgHelp">
-    <h3>Keyboard</h3>
-    <p class="dim">Works while the Stagio window has focus. Presentation clickers work too.</p>
+
+
+  <dialog id="dlgSettings" class="wide settings">
+    <div class="set-head">
+      <h3>Settings</h3>
+      <div class="grow"></div>
+      <form method="dialog"><button class="btn primary">Done</button></form>
+    </div>
+    <nav class="seg set-tabs" id="setTabs">
+      <button data-pane="layout" class="desktop-only">Layout</button>
+      <button data-pane="projector">Projector</button>
+      <button data-pane="sound" class="needs-previewPro">Sound</button>
+      <button data-pane="keys" class="desktop-only">Keys</button>
+      <button data-pane="screen">Screen</button>
+      <button data-pane="about">About</button>
+    </nav>
+
+    <section class="set-pane" data-pane="layout">
+      <p class="dim">Drag the dividers between the panels to make them bigger or smaller (double-click a divider to reset it). The layout is kept on this computer; phones and other computers have their own.</p>
+    <div class="label gap">Arrangement</div>
+    <div class="seg" id="layPresets">
+      <button data-preset="standard">Standard</button>
+      <button data-preset="program">Big program</button>
+      <button data-preset="slides">Slides only</button>
+      <button data-preset="list">Big slide list</button>
+    </div>
+    <div class="label gap">Show</div>
+    <div class="checks" id="layShow">
+      <label class="needs-music"><input type="checkbox" data-part="music"> Music</label>
+      <label><input type="checkbox" data-part="output"> Output</label>
+      <label><input type="checkbox" data-part="side"> Preview and notes</label>
+      <label><input type="checkbox" data-part="notes"> Notes</label>
+      <label><input type="checkbox" data-part="strip"> Slide list</label>
+      <label class="needs-cues"><input type="checkbox" data-part="cues"> Cue bar</label>
+    </div>
+    <label class="check gap"><input type="checkbox" id="laySwap"> <span class="needs-music">Music and </span>Output on the left</label>
+    <label class="fader">
+      <span class="label">Slide list</span>
+      <input type="range" id="layThumb" min="80" max="280" step="4">
+      <output class="mono" id="layThumbOut"></output>
+    </label>
+      <div class="actions"><button class="btn" id="btnLayoutReset">Reset to standard</button></div>
+    </section>
+
+    <section class="set-pane" data-pane="projector">
+      <p class="dim">Set once for the room. Projector mode (Duplicate, Extend) is in Output.</p>
+        <div id="monitorGroup">
+          <div class="label gap">Show slides on</div>
+          <select id="monitorSelect"></select>
+        </div>
+        <div id="presenterGroup">
+          <div class="label gap">PowerPoint presenter view</div>
+          <div class="seg" id="presenterModes">
+            <button data-pv="hide">Hide</button>
+            <button data-pv="show">Show</button>
+          </div>
+          <p class="hint">With a projector connected, PowerPoint opens its own Presenter View on this screen, on top of Stagio. Hide keeps it away. Applies the next time a show starts.</p>
+        </div>
+    </section>
+
+    <section class="set-pane needs-previewPro" data-pane="sound">
+      <div class="label">Headphone preview</div>
+      <p class="dim">The headphones and On / Off are in Output; so is the list of apps while the preview is on.</p>
+            <label class="pv-row"><span class="label">Speakers</span><select id="pvRoom"><option value="">Default output</option></select></label>
+            <label class="pv-keep"><span class="label">Always on the speakers</span><input type="text" id="pvKeep" placeholder="Program names, e.g. Teams, obs64" title="Programs that stay on the speakers besides the music app and PowerPoint, separated by commas"></label>
+      <div class="needs-mixerPro">
+        <div class="label gap">Mixer</div>
+        <p class="dim">Faders, MIX / AUX and scenes are in Output.</p>
+            <div class="needs-mixerPro mx-pro">
+              <div class="pv-row"><span class="label">Dip by</span><input type="range" min="10" max="95" id="mxDepth"><output class="mono" id="mxDepthOut"></output><span class="label">back after</span><input type="number" class="mono" min="0.3" max="10" step="0.1" id="mxRelease"><span class="dim">s</span></div>
+              <div class="pv-row"><span class="label">AUX out</span><select id="mxAux"><option value="">No AUX output</option></select></div>
+            </div>
+      </div>
+    </section>
+
+    <section class="set-pane desktop-only-pane" data-pane="keys">
+      <p class="dim">Works while the Stagio window has focus. Presentation clickers work too.</p>
     <table class="keys">
       <tr><td>→ &nbsp;Space &nbsp;Enter &nbsp;PgDn</td><td>Next slide</td></tr>
       <tr><td>← &nbsp;PgUp</td><td>Previous slide</td></tr>
@@ -417,6 +471,7 @@
       <tr class="needs-music"><td>↑ &nbsp;/ &nbsp;↓</td><td>Music level ±5</td></tr>
       <tr class="needs-cues"><td id="cueKeyText">1 – 9</td><td>Run cue</td></tr>
       <tr class="needs-run"><td>G</td><td>Next part of the run of show</td></tr>
+        <tr><td>?</td><td>This list (Settings → Keys)</td></tr>
     </table>
     <div class="needs-cues">
       <div class="label gap">Cue keys</div>
@@ -426,13 +481,11 @@
       </div>
       <p class="hint">With Shift + 1 – 9, touching a number key by accident does nothing; the cue only runs with Shift held down.</p>
     </div>
-    <form method="dialog" class="actions"><button class="btn">Close</button></form>
-  </dialog>
+    </section>
 
-  <dialog id="dlgSettings">
-    <h3>Settings</h3>
-    <p class="dim">Kept on this device only: a phone, a tablet and the PC each have their own.</p>
-    <div class="label gap">Phone and tablet screen</div>
+    <section class="set-pane" data-pane="screen">
+      <p class="dim">Kept on this device only: a phone, a tablet and the PC each have their own.</p>
+      <div class="label gap">Phone and tablet screen</div>
     <label class="check gap"><input type="checkbox" id="setFixedBar"> Keep the top bar on screen when scrolling</label>
     <label class="check gap"><input type="checkbox" id="setFixedButtons"> Keep Prev, Black, White and Next on screen in Slides</label>
     <p class="hint">Turn these off to give the slides more room; the bar and the buttons then scroll with the page.</p>
@@ -442,7 +495,10 @@
       <span class="mono" id="setNotesSize">13</span>
       <button class="btn" data-notes-size="1">A+</button>
     </div>
-    <div class="label gap">About</div>
+    </section>
+
+    <section class="set-pane" data-pane="about">
+      <div class="label">About</div>
     <p class="dim" id="aboutText">Stagio</p>
     <p class="hint">Copyright (C) 2026 Rojakiisme and contributors. Free software under the GNU General Public License, version 3 or later, with no warranty. Source code: github.com/Rojakiisme/stagio</p>
     <div class="hidden" id="macCheckBox">
@@ -452,7 +508,7 @@
       <textarea class="mono hidden" id="macCheckOut" readonly rows="10"></textarea>
       <button class="btn hidden" id="btnMacCheckCopy">Copy</button>
     </div>
-    <form method="dialog" class="actions"><button class="btn primary">Done</button></form>
+    </section>
   </dialog>
 
   <dialog id="dlgEq">
@@ -558,37 +614,6 @@
     </div>
   </dialog>
 
-  <dialog id="dlgLayout">
-    <h3>Layout</h3>
-    <p class="dim">Drag the dividers between the panels to make them bigger or smaller (double-click a divider to reset it). The layout is kept on this computer; phones and other computers have their own.</p>
-    <div class="label gap">Arrangement</div>
-    <div class="seg" id="layPresets">
-      <button data-preset="standard">Standard</button>
-      <button data-preset="program">Big program</button>
-      <button data-preset="slides">Slides only</button>
-      <button data-preset="list">Big slide list</button>
-    </div>
-    <div class="label gap">Show</div>
-    <div class="checks" id="layShow">
-      <label class="needs-music"><input type="checkbox" data-part="music"> Music</label>
-      <label><input type="checkbox" data-part="output"> Output</label>
-      <label><input type="checkbox" data-part="side"> Preview and notes</label>
-      <label><input type="checkbox" data-part="notes"> Notes</label>
-      <label><input type="checkbox" data-part="strip"> Slide list</label>
-      <label class="needs-cues"><input type="checkbox" data-part="cues"> Cue bar</label>
-    </div>
-    <label class="check gap"><input type="checkbox" id="laySwap"> <span class="needs-music">Music and </span>Output on the left</label>
-    <label class="fader">
-      <span class="label">Slide list</span>
-      <input type="range" id="layThumb" min="80" max="280" step="4">
-      <output class="mono" id="layThumbOut"></output>
-    </label>
-    <div class="actions">
-      <button class="btn" id="btnLayoutReset">Reset to standard</button>
-      <div class="grow"></div>
-      <form method="dialog"><button class="btn primary">Done</button></form>
-    </div>
-  </dialog>
 
   <dialog id="dlgFast">
     <h3>Speed up in PowerPoint</h3>

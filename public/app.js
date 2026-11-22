@@ -1161,7 +1161,15 @@ function renderMixer() {
   if (!mx) return;
   $$('#mxMode button').forEach((b) => b.classList.toggle('on', (b.dataset.mxOn === '1') === !!mx.on));
   $('#mxOff').classList.toggle('hidden', !!mx.on);
+  $('.mx-scenes').classList.toggle('hidden', !mx.on); // scenes only while the mixer is on
   $('#mxMain').classList.toggle('hidden', !mx.on);
+  if (mx.pro) {
+    const devs = S.audio?.devices || [];
+    setOptions($('#mxAux'), ['<option value="">No AUX output</option>'].concat(devs.filter((d) => !d.isDefault || d.id === mx.aux.device).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`)).join(''), mx.aux.device);
+    if (document.activeElement !== $('#mxDepth')) $('#mxDepth').value = mx.duck.depth;
+    $('#mxDepthOut').textContent = `${mx.duck.depth}%`;
+    if (document.activeElement !== $('#mxRelease')) $('#mxRelease').value = mx.duck.release;
+  }
   if (!mx.on) return;
   mxBuildRows();
   const m = mx.mic;
@@ -1182,12 +1190,7 @@ function renderMixer() {
   $$('[data-mute]').forEach((b) => b.classList.toggle('on', !!mutes[b.dataset.mute]));
   if (mx.pro) {
     const routes = { mic: { mix: m.toMix, aux: m.toAux }, music: { mix: !mx.aux.music, aux: mx.aux.music }, slides: { mix: !mx.aux.slides, aux: mx.aux.slides } };
-    $$('[data-route]').forEach((b) => { const [r, k] = b.dataset.route.split(':'); b.classList.toggle('on', !!routes[r]?.[k]); b.disabled = k === 'aux' && !mx.aux.device; });
-    const devs = S.audio?.devices || [];
-    setOptions($('#mxAux'), ['<option value="">No AUX output</option>'].concat(devs.filter((d) => !d.isDefault || d.id === mx.aux.device).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`)).join(''), mx.aux.device);
-    if (document.activeElement !== $('#mxDepth')) $('#mxDepth').value = mx.duck.depth;
-    $('#mxDepthOut').textContent = `${mx.duck.depth}%`;
-    if (document.activeElement !== $('#mxRelease')) $('#mxRelease').value = mx.duck.release;
+    $$('[data-route]').forEach((b) => { const [r, k] = b.dataset.route.split(':'); b.classList.toggle('on', !!routes[r]?.[k]); b.disabled = k === 'aux' && !mx.aux.device; if (k === 'aux') b.title = mx.aux.device ? 'To the AUX output' : 'Choose the AUX output first: Settings → Sound'; });
     setOptions($('#mxScene'), ['<option value="">Scenes…</option>'].concat((mx.scenes || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`)).join(''), '');
   }
   $('#mxDuck').checked = !!mx.duck.on;
@@ -1648,7 +1651,7 @@ function keyAction(e) {
     case 'ArrowUp': return music ? () => nudgeVolume(5) : undefined;
     case 'ArrowDown': return music ? () => nudgeVolume(-5) : undefined;
     case 'g': case 'G': return edHas('run') && runActive() ? runNext : undefined;
-    case '?': return () => { renderKeysDialog(); $('#dlgHelp').showModal(); };
+    case '?': return () => openSettings('keys');
     default: return undefined;
   }
 }
@@ -1692,7 +1695,6 @@ $('#cueKeyMode').addEventListener('click', (e) => {
   const b = e.target.closest('[data-ck]');
   if (b) post('/api/settings', { cueShift: b.dataset.ck === 'shift' });
 });
-$('#btnHelp').onclick = () => { renderKeysDialog(); $('#dlgHelp').showModal(); };
 
 // ---------------- layout (desktop) ----------------
 // Each operator arranges the console their own way: the dividers between the panels can be
@@ -1738,7 +1740,6 @@ function renderLayoutDialog() {
   for (const b of $$('#layPresets button')) b.classList.toggle('on', same(LAYOUT_PRESETS[b.dataset.preset]));
 }
 
-$('#btnLayout').onclick = () => { renderLayoutDialog(); $('#dlgLayout').showModal(); };
 $('#layPresets').addEventListener('click', (e) => {
   const b = e.target.closest('[data-preset]');
   if (!b) return;
@@ -2186,10 +2187,29 @@ $('#dlgSettings').addEventListener('click', (e) => {
   const b = e.target.closest('[data-notes-size]');
   if (b) { stepNoteSize(Number(b.dataset.notesSize)); applyDeviceSettings(); }
 });
-const openSettings = () => {
+// Settings: one dialog with tabs. The last tab used on this device opens again; on a phone the
+// Layout and Keys tabs are hidden (phones use tabs instead of a layout, and have no keyboard).
+const SET_PANES = ['layout', 'projector', 'sound', 'keys', 'screen', 'about'];
+function paneShown(p) {
+  const b = $(`#setTabs [data-pane="${p}"]`);
+  return !!b && getComputedStyle(b).display !== 'none';
+}
+function showPane(p) {
+  // a tab this device doesn't show (Layout, Keys on a phone): Screen, which every device has
+  if (!paneShown(p)) p = paneShown('screen') ? 'screen' : SET_PANES.find(paneShown);
+  $$('#setTabs [data-pane]').forEach((b) => b.classList.toggle('on', b.dataset.pane === p));
+  $$('#dlgSettings .set-pane').forEach((s) => s.classList.toggle('on', s.dataset.pane === p));
+  if (p === 'layout') renderLayoutDialog();
+  if (p === 'keys') renderKeysDialog();
+  if (p === 'projector' || p === 'sound') { renderOutput(); renderPreview(); renderMixer(); }
+  pref.set('settingsPane', p);
+}
+$('#setTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+const openSettings = (pane) => {
   applyDeviceSettings();
   $('#macCheckBox').classList.toggle('hidden', !(isPC && S?.platform?.macCheck));
-  $('#dlgSettings').showModal();
+  if (!$('#dlgSettings').open) $('#dlgSettings').showModal();
+  showPane(typeof pane === 'string' ? pane : pref.get('settingsPane') || (isPC ? 'layout' : 'screen'));
 };
 $('#btnMacCheck').onclick = async (e) => {
   const b = e.currentTarget;
@@ -2206,8 +2226,8 @@ $('#btnMacCheckCopy').onclick = async () => {
   const t = $('#macCheckOut');
   try { await navigator.clipboard.writeText(t.value); toast('Copied', 'info'); } catch { t.select(); document.execCommand('copy'); toast('Copied', 'info'); }
 };
-$('#btnSettings').onclick = openSettings;
-$('.mnav [data-settings]').onclick = openSettings;
+$('#btnSettings').onclick = () => openSettings();
+$('.mnav [data-settings]').onclick = () => openSettings();
 applyDeviceSettings();
 
 // ---------------- run of show (Extra) ----------------

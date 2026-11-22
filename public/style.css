@@ -40,6 +40,7 @@ body.no-volume .needs-volume, body.no-countdown .needs-countdown,
 body.no-mixer .needs-mixer, body.no-mixerPro .needs-mixerPro { display: none !important; }
 /* mixer */
 .mixer { border: 1px solid var(--line); padding: 8px 10px 10px; margin-bottom: 12px; background: var(--surface); }
+#mxOff { margin: 4px 0 0; }
 .mx-h { display: flex; align-items: center; gap: 8px; }
 .mx-h .grow { flex: 1; }
 .mx-scenes { display: flex; gap: 4px; }
@@ -544,6 +545,17 @@ dialog {
   max-width: min(520px, calc(100vw - 32px));
 }
 dialog.wide { width: 100%; max-width: min(880px, calc(100vw - 32px)); }
+/* Settings: tabs, one pane at a time, the same height whichever tab is open */
+dialog.settings { max-width: min(720px, calc(100vw - 32px)); }
+.set-head { display: flex; align-items: center; gap: 10px; }
+.set-head h3 { margin: 0; }
+.set-head .grow { flex: 1; }
+.set-head form { margin: 0; }
+.set-tabs { margin: 12px 0 4px; flex-wrap: wrap; }
+.set-pane { display: none; min-height: 330px; max-height: min(62vh, 560px); overflow: auto; padding: 10px 2px 2px; }
+.set-pane.on { display: block; }
+.set-pane > .label:first-child, .set-pane > p.dim:first-child { margin-top: 0; }
+.set-pane .actions { margin-top: 14px; }
 dialog::backdrop { background: rgba(0, 0, 0, .7); }
 dialog h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 dialog input[type=text] { width: 100%; }

@@ -122,7 +122,7 @@ GitHub 打出来的文件叫 `Stagio-Extra-1.0.0-beta-mac-<arm64|x64>.dmg` 这�
 | 版面 | 拖动分隔线调整各区大小、隐藏用不到的区块、左右互换；每台电脑各自保存 |
 | 手机遥控 | 网页版，不需要安装 App。点右上角 Remote：手机连上同一个 Wi-Fi，用相机扫二维码；或者在手机浏览器输入显示的网址，再输入 6 位数 PIN。PIN 连续输错 8 次会锁 5 分钟。手机顶部有 Awake（保持亮屏）和 Full（全屏）两个按钮；顶栏和 Prev/Black/White/Next 固定在屏幕上（可在 Settings 关掉）。**没有 Wi-Fi 时**：Stagio 自己开 Wi-Fi，或用蓝牙（Android） |
 
-快捷键在主控台右上角 Keys 查看。翻页笔（PgUp/PgDn、`.` 黑屏）在主控台窗口位于前台时可直接使用。
+快捷键在右上角 Settings → Keys 查看（或按 `?`）。版面（调整大小、隐藏区块、左右互换）也在 Settings → Layout。翻页笔（PgUp/PgDn、`.` 黑屏）在主控台窗口位于前台时可直接使用。
 
 ## 节目流程与开场倒数（Stagio Extra）
 
@@ -257,7 +257,7 @@ Stagio 打开文件时会自动检查：本机文件直接读文件，不占用 
 
 ## 调整版面
 
-主控台右上角的 **Layout**（只在电脑上有）：
+右上角 **Settings → Layout**（只在电脑上有）。上方的按钮只留活动中常用的（Check、Countdown、Stage、Remote、Settings），投影设定（Show slides on、演示者视图）在 Settings → Projector，快捷键在 Settings → Keys：
 
 - **拖动分隔线**调整大小：投影片区和右边栏之间、Music 和 Output 之间、PROGRAM 和 PREVIEW 之间。双击分隔线恢复原来的大小。
 - **预设**：Standard（标准）、Big program（PROGRAM 尽量大）、Slides only（只显示投影片）、Big slide list（页面列表变大）。
@@ -303,7 +303,7 @@ PowerPoint 的“打印设置”里的页码范围会在导出时临时改动，
 
 ## 隐藏 PowerPoint 的演示者视图
 
-接上投影机并使用“扩展”模式时，PowerPoint 默认会在电脑屏幕上打开它自己的演示者视图，盖住 Stagio。Output → **PowerPoint presenter view** 选 **Hide**（默认）时，Stagio 每次开始放映都会先关掉它；选 **Show** 则打开。下次开始放映时生效。
+接上投影机并使用“扩展”模式时，PowerPoint 默认会在电脑屏幕上打开它自己的演示者视图，盖住 Stagio。Settings → Projector → **PowerPoint presenter view** 选 **Hide**（默认）时，Stagio 每次开始放映都会先关掉它；选 **Show** 则打开。下次开始放映时生效。
 
 这个设置属于那份 .pptx 文件（等同 PowerPoint 里“幻灯片放映 → 使用演示者视图”的勾选）。Stagio 改它时不会把文件标记为“已修改”，但如果之后文件因为别的修改被保存，这个勾选状态会一起存进去。
 
@@ -325,7 +325,7 @@ PowerPoint 的“打印设置”里的页码范围会在导出时临时改动，
 - **End show 要按两次**：第一下按钮变红显示 Confirm end，3 秒内再按一次才会结束放映。放映中切换投影模式也一样。
 - **关闭 Stagio 窗口前会询问**：放映进行中、有手机遥控连着、或正在加速或还原文件时，关窗口会先确认（关掉 Stagio 会让遥控和 Cue 失效，放映本身不受影响；加速做到一半就关，什么都不会被改）。
 - **Reload all 要按两次**：它会重做所有缩略图，图片多的文件要十几分钟，所以第一下只会显示 Press again to remake all images，3 秒内再按一次才执行。
-- **Cue 可以改成要按 Shift + 数字**：默认按 1–9 直接执行 Cue。怕不小心碰到数字键的话，在右上角 Keys 里把 Cue keys 改成 **Shift + 1 – 9**；之后单按数字不会执行，只会提示要按 Shift。Cue 按钮上的编号也会显示成 ⇧1、⇧2。
+- **Cue 可以改成要按 Shift + 数字**：默认按 1–9 直接执行 Cue。怕不小心碰到数字键的话，在 Settings → Keys 里把 Cue keys 改成 **Shift + 1 – 9**；之后单按数字不会执行，只会提示要按 Shift。Cue 按钮上的编号也会显示成 ⇧1、⇧2。
 - **加速文件只能在主控电脑上开始**：它会改动文件，还会让 PowerPoint 忙上好几分钟；手机上只能看进度或按 Stop。
 - **最近文件**：已经被移动、改名或删除的文件会变暗，标示 Not found。
 - **窗口大小**：Stagio 会记住窗口上次的位置、大小和是否最大化；第一次在笔记本这类较小的屏幕上打开时，直接最大化。
@@ -547,8 +547,8 @@ npm run stress -- "D:\路径\测试.pptx"
 ## 已知限制
 
 - 快捷键只在主控台窗口在前台时有效；开始放映时 PowerPoint 可能抢走焦点，点一下主控台即可。
-- Output 区的 Show slides on（放映在哪个屏幕）写入 PowerPoint 自己的显示器设置（`UseMonMgr` 和 `DisplayMonitor`），下次开始放映时生效。**还没有在接了第二个屏幕的电脑上验证过**；如果不生效，请在 PowerPoint 的“幻灯片放映 → 监视器”里选。
-- 隐藏演示者视图（Output → PowerPoint presenter view）同样**还没有在接了投影机的电脑上验证过**：设置确实写进了 PowerPoint，但要接上第二个屏幕才看得出效果。
+- Settings → Projector 的 Show slides on（放映在哪个屏幕）写入 PowerPoint 自己的显示器设置（`UseMonMgr` 和 `DisplayMonitor`），下次开始放映时生效。**还没有在接了第二个屏幕的电脑上验证过**；如果不生效，请在 PowerPoint 的“幻灯片放映 → 监视器”里选。
+- 隐藏演示者视图（Settings → Projector → PowerPoint presenter view）同样**还没有在接了投影机的电脑上验证过**：设置确实写进了 PowerPoint，但要接上第二个屏幕才看得出效果。
 - 手机的 Awake（保持亮屏）**还没有在真实手机上验证过**。按钮变绿表示保持亮屏的机制正在运行，但个别手机可能仍会熄屏；活动前请实际放 2–3 分钟确认，不行就把手机的自动锁定时间调到最长。
 - Android 手机“加到主屏幕”后可能仍带浏览器地址栏（需要 HTTPS 才能完全全屏）；可以改按顶部的 Full。iPhone 的浏览器不允许网页全屏，请用“加到主屏幕”。
 - 切换音频输出设备会改变整台电脑的默认输出。

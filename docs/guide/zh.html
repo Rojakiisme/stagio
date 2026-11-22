@@ -127,7 +127,7 @@
         <li><b>输出</b>：音响设备、系统音量、投影模式。<a href="#output">详情</a></li>
         <li><b>Cue</b>：一个按钮执行一串动作。<a href="#cues">详情</a></li>
       </ol>
-      <p>左上角显示 PowerPoint 的状态（LIVE、BLACK、第几页）、音乐，以及和这台电脑的连线。<b>Layout</b> 可以调整各区大小、隐藏用不到的区块、左右互换；每台电脑各自保存。</p>
+      <p>左上角显示 PowerPoint 的状态（LIVE、BLACK、第几页）、音乐，以及和这台电脑的连线。右上角 <b>Settings</b> 里集中了版面（调整各区大小、隐藏用不到的区块、左右互换；每台电脑各自保存）、投影设定、快捷键和屏幕选项。上方只留活动中会用到的：Check、Countdown、Stage、Remote。</p>
       <p><b>很慢的文件</b>（Windows）：有些从 Canva 导出的文件，在 Windows 版 PowerPoint 里翻页很慢，原因是装饰文字用了电脑上没有的字体。Stagio 会显示 <b>Slow in PowerPoint</b>；按 <b>Speed up</b> 会把那些文字变成它们自己的图片，看起来一样，翻页变快。可以另存一份加速副本，也可以直接加速原文件（这台电脑会先保留一份之前的版本）。</p>
     </section>
 
@@ -170,8 +170,8 @@
       <ul>
         <li><b>音响设备</b>（Standard、Extra）：在音控台、喇叭和耳机之间切换。<b>系统音量</b>和<b>静音</b>每个版本都有，音量会平滑过渡，不会突然跳动。</li>
         <li><b>投影模式</b>（所有版本；Windows）：仅电脑、复制、扩展、仅投影。建议用<b>扩展（Extend）</b>：投影片放到投影机上，Stagio 留在你的屏幕上。Mac 上只有复制和扩展（只用投影机时合上盖子）。</li>
-        <li><b>Show slides on</b>：PowerPoint 放映时用哪个屏幕（所有版本都有）。</li>
-        <li><b>PowerPoint presenter view</b>：接上投影机时，PowerPoint 会在 Stagio 上面打开它自己的演示者视图。选 <b>Hide</b> 就不会出现（所有版本都有）。</li>
+        <li><b>Show slides on</b>（Settings → Projector）：PowerPoint 放映时用哪个屏幕（所有版本都有）。</li>
+        <li><b>PowerPoint presenter view</b>（Settings → Projector）：接上投影机时，PowerPoint 会在 Stagio 上面打开它自己的演示者视图。选 <b>Hide</b> 就不会出现（所有版本都有）。</li>
         <li><b>混音</b>（Windows；Standard 基本版，Extra 完整版）：没有 PA 时代替一部分。<b>Mic live</b> 让麦克风经过 Stagio 送到喇叭，有 EQ 预设和噪声门；麦克风、音乐、投影片影片、总音量各有推子、静音和音量表；有人讲话时音乐自动降低。<b>Extra</b> 另外有 AUX 输出（每一行的 MIX / AUX 按钮）、完整的麦克风 EQ（<b>EQ…</b>）、音乐降多少和多久回来，以及可以存起来、手动或用 Cue 调出的混音场景。麦克风不要靠近喇叭；出现啸叫时把麦克风推子拉下来或按 M。</li>
         <li><b>耳机预听</b>（Windows）：打开后，音乐程序和 PowerPoint 留在喇叭上，其他程序的声音只从耳机出来，你可以先听下一首歌或下一段影片，观众听不到。选好耳机，按 <b>On</b>。插上耳机时会问要不要打开，拔掉时自动关闭。<b>Extra</b> 还可以选哪个设备算喇叭、逐个程序指定喇叭或耳机、设定永远留在喇叭的程序，Cue 里也能用。耳机必须是 Windows 里独立的音响设备（USB、蓝牙或分开的输出）。</li>
       </ul>
@@ -245,7 +245,7 @@
 
     <section id="keys">
       <h2>键盘</h2>
-      <p>Stagio 窗口在最前面时有效。翻页笔也可以用。</p>
+      <p>Stagio 窗口在最前面时有效。翻页笔也可以用。按 <b>?</b> 显示这张表（Settings → Keys）。</p>
       <div class="table-wrap">
         <table class="keys">
           <tbody>
@@ -274,7 +274,7 @@
         <dt>“Windows 已保护你的电脑”，或安装程序没反应</dt>
         <dd>点“更多信息 → 仍要运行”。如果完全没反应，是防毒软件还在检查新文件，等几分钟再试。</dd>
         <dt>PowerPoint 自己的演示者视图盖住了 Stagio</dt>
-        <dd>输出 → PowerPoint presenter view → Hide。下次开始放映时生效。</dd>
+        <dd>Settings → Projector → PowerPoint presenter view → Hide。下次开始放映时生效。</dd>
         <dt>从电子邮件或下载打开的文件是只读的</dt>
         <dd>它在 PowerPoint 的“受保护的视图”里。点琥珀色的 <b>Protected View · enable editing</b> 标签。</dd>
         <dt>音乐没有反应</dt>
@@ -288,7 +288,7 @@
   </main>
 
   <footer>
-    <span class="dim">Stagio · Lite Beta 1.3 · Standard Beta 1.4 · Extra Beta 1.5</span>
+    <span class="dim">Stagio · Lite Beta 1.3.1 · Standard Beta 1.4.1 · Extra Beta 1.5.1</span>
     <span><a href="../">下载</a> · <a href="https://github.com/Rojakiisme/stagio/releases">所有版本</a> · <a href="https://github.com/Rojakiisme/stagio">源代码</a> · <a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a></span>
   </footer>
 </body>
