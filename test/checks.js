@@ -34,6 +34,14 @@ async function helperChecks() {
     const displays = await h.call('display.list');
     check('display.list lists screens', displays.screens.length > 0, `${displays.screens.length} screen(s)`);
 
+    // A file name in Chinese, with an emoji and accents, reaches PowerShell intact (UTF-8 both ways).
+    const udir = fs.mkdtempSync(path.join(os.tmpdir(), 'od-uni-'));
+    const ufile = path.join(udir, '春季聚会 🎉 Ünïcödé.pptx');
+    fs.copyFileSync(path.join(__dirname, '..', 'demo', 'Looking Ahead.pptx'), ufile);
+    const deck = await h.call('deck.slowText', { path: ufile }, { timeoutMs: 60000 }).catch((e) => ({ error: e.message }));
+    check('a file name in Chinese with an emoji is read by the helper', deck && deck.total > 0, JSON.stringify(deck).slice(0, 120));
+    fs.rmSync(udir, { recursive: true, force: true });
+
     // A command that waited past its deadline behind a slow one must be dropped, not run late.
     const before = await h.call('debug.mark');
     const slow = h.call('debug.sleep', { ms: 1500 });
@@ -901,6 +909,63 @@ async function serverChecks() {
   ctrl.abort();
 }
 
+// ---------------------------------------------------------------- cues: stop, background fades
+async function cueChecks() {
+  const { CueRunner } = require('../lib/cues');
+  const done = [];
+  let cancelled = 0;
+  let failFade = false;
+  const music = {
+    fadeOut: (s) => new Promise((resolve, reject) => setTimeout(() => (failFade ? reject(new Error('player gone')) : resolve()), s * 1000)),
+    cancelFade: () => { cancelled++; },
+    play: async () => { done.push('play'); },
+  };
+  const ppt = { state: { show: null }, cmd: async (name) => { done.push(name); } };
+  const late = [];
+  const cr = new CueRunner({ ppt, output: {}, music: () => music, onLate: (name, msg) => late.push(`${name}: ${msg}`) });
+
+  const t0 = Date.now();
+  const p = cr.run({ id: 'w', name: 'Wait then next', steps: [{ type: 'music.fadeOut', seconds: 0.4 }, { type: 'wait', seconds: 5 }, { type: 'ppt.next' }] });
+  await sleep(60);
+  check('a cue with a wait shows as running', cr.isRunning('w') && cr.running?.ids.includes('w'));
+  check('Stop stops it', cr.stop('w') === 1);
+  const errs = await p;
+  check('...the wait ends at once and the steps after it are not done', Date.now() - t0 < 1000 && !done.includes('ppt.next') && errs.stopped === true, `${Date.now() - t0} ms, ${done.join(' ')}`);
+  check('...and the fade it started stops where it is', cancelled === 1);
+  await sleep(500);
+  check('...and then it is no longer running', !cr.isRunning('w') && cr.running === null);
+
+  failFade = true;
+  const r2 = await cr.run({ id: 'f', name: 'Fade out', steps: [{ type: 'music.fadeOut', seconds: 0.2 }, { type: 'ppt.next' }] });
+  check('a cue counts as running until the fade it left in the background is over', r2.length === 0 && cr.isRunning('f'));
+  await sleep(400);
+  check('a background fade that fails after the cue has finished is still reported', late.length === 1 && /Fade out: .*player gone/.test(late[0]) && !cr.isRunning('f'), late.join(' | '));
+  check('Stop with nothing running does nothing', cr.stop() === 0);
+}
+
+// ---------------------------------------------------------------- diagnostics
+function diagnosticsChecks() {
+  const { report } = require('../lib/diagnostics');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'od-diag-'));
+  const logFile = path.join(dir, 'stagio.log');
+  const home = 'C:\\Users\\Jane Doe';
+  fs.writeFileSync(logFile, [
+    '2026-11-23T10:00:00Z LOG Remote (same Wi-Fi): http://192.168.1.5:7300/  PIN 482913',
+    '2026-11-23T10:01:00Z LOG opened C:\\Users\\Jane Doe\\Documents\\Sunday.pptx',
+    '2026-11-23T10:02:00Z LOG phone http://192.168.1.5:7300/?key=Ab3dEf9hIjKl&x=1 and ?pair=k7m2p9q4r8',
+    '2026-11-23T10:03:00Z LOG wifi pass wifiPass123 key Zz9StageKeyQq',
+  ].join('\n'));
+  const text = report({
+    edition: { name: 'Stagio Extra', label: 'Beta 1.6', version: '1.6.0-beta' }, ppt: { running: false }, program: 'none',
+    devices: 2, connected: 1, helpers: { control: { pid: 1, restarts: 0, recycles: 1, pending: 0, calls: 9 } }, timings: { 'ppt.next': { n: 3, avgMs: 40, maxMs: 90 } },
+  }, { logFile, secrets: ['482913', 'wifiPass123', 'Zz9StageKeyQq', 'k7m2p9q4r8'], home, user: 'Jane Doe' });
+  check('diagnostics: version, helpers and the end of the log are in it', /Stagio Extra Beta 1\.6/.test(text) && /control/.test(text) && /Sunday\.pptx/.test(text) && /ppt\.next/.test(text));
+  check('diagnostics: the PIN, keys, codes and Wi-Fi password are taken out',
+    !/482913|wifiPass123|Zz9StageKeyQq|k7m2p9q4r8|Ab3dEf9hIjKl/.test(text) && /\?key=\[hidden\]/.test(text), text.split('\n').filter((l) => /hidden/.test(l)).join(' | '));
+  check('diagnostics: the user\'s folder name is taken out', !/Jane Doe/.test(text) && /~\\Documents\\Sunday\.pptx/.test(text));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // ---------------------------------------------------------------- paired devices
 function deviceChecks() {
   const { Devices, deviceName } = require('../lib/devices');
@@ -974,6 +1039,8 @@ function deviceChecks() {
     imageChecks();
     editionChecks();
     deviceChecks();
+    diagnosticsChecks();
+    await cueChecks();
     await runChecks();
     if (process.argv.includes('--server')) await serverChecks();
   } catch (e) {

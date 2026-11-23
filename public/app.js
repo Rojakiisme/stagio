@@ -262,6 +262,7 @@ function applyState(patch) {
   if (has('recent')) renderRecent();
   if (has('fastCopy', 'ppt')) renderFastCopy(patch.fastCopy && !full ? patch.fastCopy : null);
   if (has('cueAuto')) announceAutoCue(S.cueAuto, full);
+  if (has('cueLate')) announceCueLate(S.cueLate, full);
   if (has('timer', 'ppt')) renderTimers();
   if (has('run', 'cues', 'recent', 'ppt', 'edition', 'displays')) renderRun();
   if (has('stage', 'edition')) renderStage();
@@ -293,6 +294,14 @@ function applyEdition() {
   // A tab this edition doesn't have (left from another edition on this phone): back to Slides.
   const tab = document.body.dataset.tab;
   if ((tab === 'music' && !edHas('music')) || (tab === 'cues' && !edHas('cues'))) $('.mnav [data-tab="slides"]')?.click();
+}
+
+/** A fade a cue started in the background failed after the cue had finished. */
+let cueLateSeen = null;
+function announceCueLate(l, quiet) {
+  if (!l || l.at === cueLateSeen) return;
+  cueLateSeen = l.at;
+  if (!quiet) toast(`Cue “${l.name}”: ${l.error}`);
 }
 
 /** Says when a cue ran by itself (and if a step failed), since nobody pressed a button for it. */
@@ -399,9 +408,16 @@ function renderEmpty(p, has) {
     : `<p>No presentation open</p>
        <p class="dim">${APP ? 'Drop a presentation on this window, or choose one:' : 'Open one in PowerPoint, or choose one:'}</p>
        <button class="btn" data-open-dialog>Open…</button>
+       ${isPC ? '<button class="btn" data-demo title="Two sample presentations that come with Stagio, to try everything without your own slides">Try with sample slides</button>' : ''}
        ${recent ? `<div class="label gap">Recent</div><div class="list">${recent}</div>` : ''}`;
 }
+/** Opens the sample presentations that come with Stagio (and, in Extra, a sample run of show). */
+async function startDemo() {
+  const r = await pptSend('/api/demo', {}, SLOW);
+  if (r) toast(r.run ? 'Sample slides opened. A run of show called “Sample event” is ready in the Run bar.' : 'Sample slides opened.', 'info');
+}
 document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-demo]')) startDemo();
   if (e.target.closest('[data-enable-editing]')) pptSend('/api/ppt/enableEditing', {}, 30000);
   if (e.target.closest('[data-open-dialog]')) showOpenDialog();
   const r = e.target.closest('[data-recent]');
@@ -1494,12 +1510,12 @@ function renderCues() {
   ab.classList.toggle('lit', autoOn);
   const labels = S.cues.map(autoLabel);
   const shift = !!S.settings?.cueShift;
-  const key = JSON.stringify([S.cues, S.cueRunning?.id, labels, shift]);
+  const key = JSON.stringify([S.cues, S.cueRunning?.ids || S.cueRunning?.id, labels, shift]);
   const el = $('#cues');
   if (el.dataset.key === key) return;
   el.dataset.key = key;
   el.innerHTML = S.cues.map((c, i) => `
-    <button class="cue ${S.cueRunning?.id === c.id ? 'running' : ''}" data-cue="${esc(c.id)}" data-color="${esc(c.color)}"${i < 9 ? ` title="Key: ${shift ? 'Shift + ' : ''}${i + 1}"` : ''}>
+    <button class="cue ${cueIsRunning(c.id) ? 'running' : ''}" data-cue="${esc(c.id)}" data-color="${esc(c.color)}"${i < 9 ? ` title="Key: ${shift ? 'Shift + ' : ''}${i + 1}"` : ''}>
       <span class="ck${shift ? ' shift' : ''}">${i < 9 ? `${shift ? '⇧' : ''}${i + 1}` : ''}</span>
       <span class="cn">${esc(c.name)}</span>
       <span class="cm">${c.steps.length} step${c.steps.length === 1 ? '' : 's'}${esc(labels[i])}</span>
@@ -1507,14 +1523,22 @@ function renderCues() {
 }
 $('#btnAutoCues').onclick = () => post('/api/settings', { autoCues: !S.settings?.autoCues });
 
+const cueIsRunning = (id) => !!(S?.cueRunning && (S.cueRunning.ids || [S.cueRunning.id]).includes(id));
 async function runCue(id) {
   const r = await post(`/api/cues/${encodeURIComponent(id)}/run`, {}, VERY_SLOW);
-  if (r?.skipped) toast('That cue is still running', 'info');
+  if (r?.skipped) toast('That cue is still running. Click it to stop it.', 'info');
+  else if (r?.stopped) toast('Cue stopped', 'info');
   return r;
+}
+/** A running cue's button stops it (two clicks: the first asks). */
+function cueButton(b) {
+  const id = b.dataset.cue;
+  if (!cueIsRunning(id)) return runCue(id);
+  if (confirmTap(b, 'Stop?')) post('/api/cues/stop', { id });
 }
 $('#cues').addEventListener('click', (e) => {
   const b = e.target.closest('[data-cue]');
-  if (b) runCue(b.dataset.cue);
+  if (b) cueButton(b);
 });
 
 // cue editor
@@ -2292,8 +2316,29 @@ $('#setTabs').addEventListener('click', (e) => { const b = e.target.closest('[da
 const openSettings = (pane) => {
   applyDeviceSettings();
   $('#macCheckBox').classList.toggle('hidden', !(isPC && S?.platform?.macCheck));
+  $('#diagBox').classList.toggle('hidden', !isPC);
   if (!$('#dlgSettings').open) $('#dlgSettings').showModal();
   showPane(typeof pane === 'string' ? pane : pref.get('settingsPane') || (isPC ? 'layout' : 'screen'));
+};
+// Diagnostics for a problem report (this PC only): saved as a text file.
+$('#btnDiag').onclick = async (e) => {
+  const b = e.currentTarget;
+  b.disabled = true;
+  try {
+    const r = await fetchT('/api/diagnostics', {}, 30000);
+    if (!r.ok) { toast((await r.json().catch(() => null))?.error || 'Could not collect the diagnostics'); return; }
+    const name = (r.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'stagio-diagnostics.txt';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  } catch {
+    toast('Could not collect the diagnostics');
+  } finally {
+    b.disabled = false;
+  }
 };
 $('#btnMacCheck').onclick = async (e) => {
   const b = e.currentTarget;

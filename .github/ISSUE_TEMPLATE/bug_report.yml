@@ -1,0 +1,60 @@
+name: Something doesn't work
+description: Stagio did something wrong, or didn't do what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. Please don't post your PIN, a QR code or a key here.
+        A security problem? Report it privately instead (see SECURITY.md).
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edition
+      options: [Stagio Lite, Stagio Standard, Stagio Extra]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings → About shows it, e.g. Beta 1.6
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Computer
+      options: [Windows 11, Windows 10, "macOS (Apple silicon)", "macOS (Intel)"]
+    validations:
+      required: true
+  - type: input
+    id: powerpoint
+    attributes:
+      label: PowerPoint version
+      description: In PowerPoint, File → Account → About PowerPoint (e.g. Microsoft 365, 2409)
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Stagio did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: Step by step, if you know. "Only once" is useful to know too.
+  - type: checkboxes
+    id: event
+    attributes:
+      label: When
+      options:
+        - label: It happened during a real event
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        On the Stagio computer: Settings → About → Save diagnostics, then drag the file here.
+        The PIN, keys and your user name are taken out of it; read it before you send it.

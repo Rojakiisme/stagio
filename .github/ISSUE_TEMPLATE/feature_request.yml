@@ -1,0 +1,28 @@
+name: An idea
+description: Something Stagio could do better, or a job it could help with.
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful ideas start from a real event: what you were doing, and where Stagio got in
+        the way or wasn't there yet.
+  - type: textarea
+    id: situation
+    attributes:
+      label: The situation
+      description: The event, your role in it, and what you were trying to do.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: What you'd like Stagio to do. Rough is fine.
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edition you use
+      options: [Stagio Lite, Stagio Standard, Stagio Extra, Not using it yet]

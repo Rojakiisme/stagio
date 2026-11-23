@@ -1,6 +1,6 @@
 {
   "name": "stagio",
-  "version": "1.5.0-beta",
+  "version": "1.6.0-beta",
   "description": "One-person control desk for PowerPoint, music and audio/projector output",
   "author": "Stagio",
   "license": "GPL-3.0-or-later",
@@ -21,6 +21,8 @@
     "dist:win": "node build/make-installer.js",
     "dist:mac": "sh build/make-mac-helper.sh && electron-builder --mac dmg zip",
     "icons": "powershell -ExecutionPolicy Bypass -File build/make-icons.ps1",
+    "check": "node test/checks.js",
+    "check:server": "node test/server-checks.js",
     "stress": "node test/stress.js",
     "mac:helper": "sh build/make-mac-helper.sh"
   },
@@ -44,6 +46,7 @@
       "lib/**",
       "ps/**",
       "public/**",
+      "demo/**",
       "electron/**",
       "build/icon.ico",
       "build/icon.png",

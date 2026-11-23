@@ -17,6 +17,7 @@ const { Mixer } = require('./lib/mixer');
 const { Helper } = require('./lib/helper');
 const { Devices, deviceName } = require('./lib/devices');
 const { StepGuard } = require('./lib/stepguard');
+const diagnostics = require('./lib/diagnostics');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
 const edition = require('./lib/edition').current();
@@ -53,7 +54,12 @@ const mixer = mixerHelper ? new Mixer({
   onChange: () => broadcastSoon(),
   onMeters: (m) => pushMeters(m),
 }) : null;
-const cues = new CueRunner({ ppt, output, music, preview: () => (ed.previewPro ? preview : null), mixer: () => (ed.mixerPro ? mixer : null) });
+// A fade a cue left running that failed after the cue had finished: shown on the consoles.
+let cueLate = null; // { at, name, error }
+const cues = new CueRunner({
+  ppt, output, music, preview: () => (ed.previewPro ? preview : null), mixer: () => (ed.mixerPro ? mixer : null),
+  onLate: (name, error) => { cueLate = { at: Date.now(), name, error }; broadcastSoon(); },
+});
 
 // Every "start show" (button, key, cue) applies the display chosen under Output. Once Stagio has
 // changed PowerPoint's own setting, going back to "Automatic" has to be written back as well.
@@ -95,7 +101,7 @@ const autoCues = new AutoCues({
   cues: () => cfg.cues,
   enabled: () => ed.cues && cfg.autoCues,
   current: () => ppt.state.show || null,
-  isRunning: (id) => cues.running?.id === id,
+  isRunning: (id) => cues.isRunning(id),
   run: async (cue) => {
     startSegment(cue.name);
     const errors = await cues.run(cue);
@@ -163,6 +169,21 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ ok: false, error: 'The request could not be read' });
   }
   next(err);
+});
+
+// Every page may run only the scripts this server sends (no inline scripts, nothing from other
+// sites) and talk only to this server, so text that ends up in a page (a slide title, a song
+// name) can never run as code, even if a mistake let it through as HTML.
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:",
+  "connect-src 'self'", "font-src 'self'", "media-src 'self'", "object-src 'none'", "base-uri 'none'",
+  "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer'); // a ?key= address never travels to another site
+  next();
 });
 
 // The page itself (HTML/JS/CSS) is public: it holds no secrets, and phones must be able to load
@@ -388,6 +409,7 @@ function buildParts() {
     cues: cfg.cues,
     cueRunning: cues.running,
     cueAuto: autoCues.last,
+    cueLate,
     settings: { hidePresenterView: cfg.hidePresenterView, autoCues: cfg.autoCues, cueShift: cfg.cueShift },
     recent: cfg.recent.map((r) => (recentGone.has(r.path) ? { ...r, missing: true } : r)),
     fastCopy: fastCopyState(),
@@ -464,6 +486,42 @@ setInterval(() => {
 app.get('/api/state', (req, res) => res.json(fullState()));
 
 // Diagnostics for testing: helper queues/restarts, scan time, memory, live clients.
+// "Save diagnostics" (Settings → About): a text file for a problem report, this PC only, with the
+// PIN, keys, codes, the Wi-Fi password and the user's folder name taken out (lib/diagnostics.js).
+app.get('/api/diagnostics', onlyHere, (req, res) => {
+  const h = (x) => ({ pid: x.proc?.pid || null, pending: x.pending.size, restarts: x.restarts, recycles: x.recycles, calls: x.calls });
+  const sh = ppt.state.show;
+  const devs = devices.list(onlineDevices());
+  const run = runOfShow?.summary()?.active;
+  const runShow = run ? runOfShow.show(run.showId) : null;
+  const audio = output.audio || {};
+  const lm = ed.music && cfg.features.music === 'local' ? localMusic.summary() : null;
+  const text = diagnostics.report({
+    now: Date.now(),
+    edition: { name: edition.name, label: edition.label, version: edition.version },
+    ppt: { running: !!ppt.state.running, busy: !!ppt.state.busy, presentations: (ppt.state.presentations || []).length, show: sh ? { slide: sh.slide, total: sh.total, state: sh.state } : null },
+    program: program.status,
+    screens: output.displays?.screens?.length ?? (output.displays?.error ? `error: ${output.displays.error}` : '?'),
+    displayMode: output.displayMode ?? '?',
+    audioDevices: audio.devices?.length ?? '?',
+    audioDefault: audio.devices?.find((d) => d.isDefault)?.name || '',
+    music: !ed.music ? 'not in this edition' : cfg.features.music === 'off' ? 'off' : lm ? `${lm.app?.name || 'no player yet'}${lm.isPlaying ? ' · playing' : ''}` : 'on',
+    devices: devs.length,
+    connected: devs.filter((d) => d.online).length,
+    stageScreens: stageClients.size,
+    run: run ? `part ${run.index + 1} of ${runShow?.parts.length ?? '?'}${run.error ? ` · error: ${run.error}` : ''}` : null,
+    helpers: Object.fromEntries(Object.entries(platform.helpers).map(([k, x]) => [k, h(x)])),
+    timings: Object.fromEntries(Object.entries(platform.timings()).map(([k, v]) => [k, { n: v.n, avgMs: Math.round(v.totalMs / v.n), maxMs: v.maxMs }])),
+  }, {
+    logFile: path.join(config.DATA_DIR, 'stagio.log'),
+    secrets: [cfg.pin, cfg.stagePin, cfg.accessKey, cfg.stageKey, cfg.ownWifi?.pass, ...devices.codes()],
+  });
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, (c) => (c === 'T' ? '-' : c === ':' ? '' : '-'));
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="stagio-diagnostics-${stamp}.txt"`);
+  res.send(text);
+});
+
 app.get('/api/debug', (req, res) => {
   const h = (x) => ({ pid: x.proc?.pid || null, pending: x.pending.size, restarts: x.restarts, recycles: x.recycles, calls: x.calls });
   res.json({
@@ -723,6 +781,42 @@ app.post('/api/ppt/open', act(async (req) => {
   if (!ppt.state.show) ppt.focus = full; // bring the file just opened into view
   return full;
 }, pptAfter));
+// "Try it with sample slides": the two sample presentations that come with Stagio are copied into
+// its data folder (PowerPoint can't open files inside the app) and the first is opened. Extra also
+// gets a sample run of show that uses them (once; it can be deleted like any other).
+const DEMO_FILES = ['Spring Gathering.pptx', 'Looking Ahead.pptx'];
+app.post('/api/demo', onlyHere, act(async () => {
+  const dest = path.join(config.DATA_DIR, 'demo');
+  fs.mkdirSync(dest, { recursive: true });
+  const [a, b] = DEMO_FILES.map((n) => {
+    const to = path.join(dest, n);
+    // read + write, not copy: inside the installed app the files are in app.asar
+    if (!fs.existsSync(to)) fs.writeFileSync(to, fs.readFileSync(path.join(__dirname, 'demo', n)));
+    return to;
+  });
+  let run = false;
+  if (runOfShow && !runOfShow.show('demo')) {
+    runOfShow.setShows([...cfg.shows, { id: 'demo', name: 'Sample event', parts: [
+      { id: 'd-cd', kind: 'countdown', name: 'Countdown', minutes: 2, title: 'Starting soon', notices: ['Welcome to the Spring Community Gathering', 'Phones on silent, please'], fadeOut: 5, autoNext: true },
+      { id: 'd-wel', kind: 'slides', name: 'Welcome', minutes: 5, file: a, slide: 1, musicOut: { on: true, seconds: 4 } },
+      { id: 'd-talk', kind: 'slides', name: 'Building Together', minutes: 15, file: a, slide: 3 },
+      { id: 'd-brk', kind: 'music', name: 'Break', minutes: 5, black: true, musicIn: { on: true, volume: 60, seconds: 4 } },
+      { id: 'd-la', kind: 'slides', name: 'Looking Ahead', minutes: 15, file: b, slide: 1, musicOut: { on: true, seconds: 4 } },
+    ] }]);
+    run = true;
+  }
+  let full;
+  try {
+    full = await ppt.cmd('ppt.open', { path: a });
+  } catch (e) {
+    throw new Error(`The sample slides need PowerPoint: ${e.message}`);
+  }
+  addRecent(full);
+  if (!ppt.state.show) ppt.focus = full;
+  broadcast();
+  return { file: full, run };
+}, pptAfter));
+
 // A file opened from a download or e-mail waits in PowerPoint's Protected View; this is the
 // same as clicking "Enable Editing" there.
 app.post('/api/ppt/enableEditing', act(() => ppt.cmd('ppt.enableEditing'), pptAfter));
@@ -1197,6 +1291,8 @@ app.put('/api/cues', act((req) => {
   });
   saveCfg();
 }));
+// Stop a running cue (or all of them): no further steps, a wait ends, its fade stops where it is.
+app.post('/api/cues/stop', act((req) => ({ stopped: cues.stop(req.body?.id ? String(req.body.id) : null) })));
 app.post('/api/cues/:id/run', act(async (req) => {
   const cue = cfg.cues.find((c) => c.id === req.params.id);
   if (!cue) throw new Error('Cue not found');
@@ -1207,6 +1303,7 @@ app.post('/api/cues/:id/run', act(async (req) => {
   startSegment(cue.name);
   broadcast();
   const errors = await cues.run(cue);
+  if (errors.stopped) return { stopped: true };
   if (errors.length) throw new Error(errors.join('\n'));
 }, pptAfter));
 

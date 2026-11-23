@@ -81,6 +81,10 @@ A fix raises the last number, a new feature the middle one.
 - **Stage display** (Extra): a phone or tablet on the lectern shows the current and next slide, the
   notes in large type and the time left. It has its own PIN and can only look. The desk can send
   the speaker a message ("5 minutes left") and sees when it was read.
+- **Try with sample slides**: on the empty console, two sample presentations that come with Stagio
+  (Extra also gets a sample run of show), to try everything without your own slides.
+- **Problem reports**: Settings → About → Save diagnostics (the PIN, keys and user name are taken
+  out); bug and idea forms on GitHub. Changes per release: [CHANGELOG.md](CHANGELOG.md).
 - **Phone remote**: a web page, nothing to install. Scan the QR code (it works for 10 minutes) or
   enter the 6-digit PIN; each phone gets a key of its own. The Remote window lists the paired
   devices: remove one, or make a new PIN and keys. Keep awake, full screen, and the main buttons
@@ -161,9 +165,10 @@ repository has SignPath secrets; without them (as now) it builds unsigned.
 ## Checks
 
 ```bash
-node test/checks.js                 # helper, config, cues, fades, editions, run of show
+node test/checks.js                 # helper, config, cues, fades, editions, run of show, devices
 node test/checks.js --server        # also a running Stagio (npm run dev) over HTTP
 node test/checks.js --no-helper     # without the Windows helper (Mac, CI)
+node test/server-checks.js          # a fresh server per edition (Lite, Standard, Extra), checked over HTTP
 npx electron test/electron-countdown.js
 npm run stress -- "D:\path\deck.pptx"   # runs a real slide show (takes over the screen)
 ```

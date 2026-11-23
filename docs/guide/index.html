@@ -94,8 +94,8 @@
                 <tr data-os="win"><td>Mixer, headphone preview</td><td>–</td><td>Basic</td><td>Full</td></tr>
                 <tr><td>Run of show, stage display and messages</td><td>–</td><td>–</td><td class="y">Yes</td></tr>
                 <tr><td>First-time setup</td><td>Open the file, scan the code</td><td>+ start the music once in your player, connect the projector</td><td>+ plan the run of show</td></tr>
-                <tr data-os="win"><td>Version (Windows)</td><td>Beta 1.4</td><td>Beta 1.5</td><td>Beta 1.6</td></tr>
-                <tr data-os="mac"><td>Version (Mac, test)</td><td>Beta 1.4</td><td>Beta 1.4</td><td>Beta 1.5</td></tr>
+                <tr data-os="win"><td>Version (Windows)</td><td>Beta 1.5</td><td>Beta 1.6</td><td>Beta 1.7</td></tr>
+                <tr data-os="mac"><td>Version (Mac, test)</td><td>Beta 1.5</td><td>Beta 1.5</td><td>Beta 1.6</td></tr>
               </tbody>
             </table>
           </div>
@@ -129,7 +129,7 @@
 
         <section id="console">
           <h2>The console</h2>
-          <p>Open your presentation in PowerPoint, or with <b>Open…</b> in Stagio (recent files, a path, or drag the file onto the window). Start the show with <b>Start</b> or F5.</p>
+          <p>Open your presentation in PowerPoint, or with <b>Open…</b> in Stagio (recent files, a path, or drag the file onto the window). Start the show with <b>Start</b> or F5. No slides at hand? On the empty console, <b>Try with sample slides</b> opens two sample presentations that come with Stagio (in Extra also a sample run of show, “Sample event”).</p>
           <figure class="annotated">
             <div class="shot">
               <img src="img/console.png" alt="The Stagio Extra console during a show">
@@ -223,7 +223,8 @@
           <p>A cue runs several steps from one button, for example <i>Opening: music out, start the show at slide 1</i>, or <i>Break: black screen, music in</i>. Edit them under <b>Cues → Edit</b>: music steps (play, pause, fades, levels), slide steps (start, go to, next, black, white, end), output steps (sound device, system level, display mode<span data-os="win">, headphone preview and mixer scenes in Extra</span>) and waits. Fades run in the background, so the next step happens right away.</p>
           <figure><img src="img/cue-editor.png" alt="The cue editor" loading="lazy"></figure>
           <ul>
-            <li>A cue that is still running is not started a second time by another press. Keys <b>1–9</b> run the first nine cues. To avoid accidents, set them to need <b>Shift + 1–9</b> in Settings → Keys.</li>
+            <li><b>Stop a cue</b>: click it while it runs (it is lit up), then once more to confirm. No further steps run, a wait ends at once, and a fade it started stops where it is. Pressing a running cue never starts it a second time.</li>
+            <li>Keys <b>1–9</b> run the first nine cues. To avoid accidents, set them to need <b>Shift + 1–9</b> in Settings → Keys.</li>
             <li><b>Run by itself at a slide</b>: the cue runs when the show reaches that slide going forward (not when stepping back). It stays with the slide if slides are added or moved.</li>
             <li>Whoever builds the slides can do the same by writing <code>[cue: Break]</code> (the start of a cue's name) in a slide's notes.</li>
             <li><b>Auto on / off</b> switches all of these at once.</li>
@@ -349,6 +350,10 @@
               <dd>Pull the mic fader down or press M, and keep the microphone away from the speakers. If the mixer can't start, check that the microphone and the speakers are connected and not used exclusively by another app, then turn the mixer off and on.</dd>
             </div>
             <div>
+              <dt>Reporting a problem</dt>
+              <dd>On the Stagio computer, Settings → About → <b>Save diagnostics</b> saves a text file with the version, the system and the end of Stagio's log; the PIN, keys and your user name are taken out. Attach it to a report on <a href="https://github.com/Rojakiisme/stagio/issues/new/choose">GitHub</a>.</dd>
+            </div>
+            <div>
               <dt>Switching editions</dt>
               <dd>Open the other edition. The one that is running asks whether to switch; the settings, PIN, cues and runs of show come along. Uninstalling one edition keeps the shared settings for the others.</dd>
             </div>
@@ -364,7 +369,7 @@
 
   <footer class="site-foot">
     <div class="wrap foot-row">
-      <span class="dim">Stagio · Windows: Lite 1.4 · Standard 1.5 · Extra 1.6 · Mac (test): Lite 1.4 · Standard 1.4 · Extra 1.5</span>
+      <span class="dim">Stagio · Windows: Lite 1.5 · Standard 1.6 · Extra 1.7 · Mac (test): Lite 1.5 · Standard 1.5 · Extra 1.6</span>
       <span class="links"><a href="../">Download</a><a href="https://github.com/Rojakiisme/stagio/releases">All versions</a><a href="https://github.com/Rojakiisme/stagio">Source code</a><a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a></span>
     </div>
   </footer>

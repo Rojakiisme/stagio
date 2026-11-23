@@ -94,8 +94,8 @@
                 <tr data-os="win"><td>混音、耳机预听</td><td>–</td><td>基本</td><td>完整</td></tr>
                 <tr><td>节目流程、讲台提示屏和控台讯息</td><td>–</td><td>–</td><td class="y">有</td></tr>
                 <tr><td>第一次要设定的</td><td>打开文件，手机扫码</td><td>再在播放程序里放一次音乐、接投影机</td><td>再排节目流程</td></tr>
-                <tr data-os="win"><td>版本（Windows）</td><td>Beta 1.4</td><td>Beta 1.5</td><td>Beta 1.6</td></tr>
-                <tr data-os="mac"><td>版本（Mac 测试版）</td><td>Beta 1.4</td><td>Beta 1.4</td><td>Beta 1.5</td></tr>
+                <tr data-os="win"><td>版本（Windows）</td><td>Beta 1.5</td><td>Beta 1.6</td><td>Beta 1.7</td></tr>
+                <tr data-os="mac"><td>版本（Mac 测试版）</td><td>Beta 1.5</td><td>Beta 1.5</td><td>Beta 1.6</td></tr>
               </tbody>
             </table>
           </div>
@@ -129,7 +129,7 @@
 
         <section id="console">
           <h2>主控台</h2>
-          <p>在 PowerPoint 里打开投影片，或在 Stagio 点 <b>Open…</b>（最近的文件、贴上路径，或把文件拖进窗口）。按 <b>Start</b> 或 F5 开始放映。</p>
+          <p>在 PowerPoint 里打开投影片，或在 Stagio 点 <b>Open…</b>（最近的文件、贴上路径，或把文件拖进窗口）。按 <b>Start</b> 或 F5 开始放映。手边没有投影片？在空白的主控台上按 <b>Try with sample slides</b>，会打开 Stagio 自带的两份示范投影片（Extra 还会建好一个示范节目流程“Sample event”）。</p>
           <figure class="annotated">
             <div class="shot">
               <img src="img/console.png" alt="放映中的 Stagio Extra 主控台">
@@ -223,7 +223,8 @@
           <p>一个 Cue 用一个按钮执行好几个步骤，例如“开场：音乐淡出，从第 1 页开始放映”，或“中场：黑屏，音乐淡入”。在 <b>Cues → Edit</b> 里编辑：音乐步骤（播放、暂停、淡入淡出、音量）、投影片步骤（开始、跳页、下一页、黑屏、白屏、结束）、输出步骤（音频设备、系统音量、投影模式<span data-os="win">，Extra 还有耳机预听和混音场景</span>）和等待。淡入淡出在背景进行，所以下一个步骤会马上开始。</p>
           <figure><img src="img/cue-editor.png" alt="Cue 编辑画面" loading="lazy"></figure>
           <ul>
-            <li>Cue 还在执行时，再按一次不会重复执行。按 <b>1–9</b> 执行前 9 个 Cue。为了避免误按，可以在 Settings → Keys 里改成要按 <b>Shift + 1–9</b>。</li>
+            <li><b>停止 Cue</b>：在它执行中（按钮亮着）时点它，再点一次确认。后面的步骤不再执行，“等待”立刻结束，它开始的淡入淡出停在当时的音量。Cue 执行中再按，不会重复执行。</li>
+            <li>按 <b>1–9</b> 执行前 9 个 Cue。为了避免误按，可以在 Settings → Keys 里改成要按 <b>Shift + 1–9</b>。</li>
             <li><b>翻到某一页时自动执行</b>：放映往前翻到那一页时执行（往回翻不会）。前面插入或移动页面后，Cue 仍然跟着那一页。</li>
             <li>做投影片的人也可以在那一页的备注里写 <code>[cue: Break]</code>（写 Cue 名称的开头即可），效果一样。</li>
             <li><b>Auto on / off</b> 一次打开或关掉全部自动执行。</li>
@@ -349,6 +350,10 @@
               <dd>把麦克风推子拉下来或按 M，麦克风不要靠近喇叭。如果混音开不起来，确认麦克风和喇叭都接好了、没有被别的程序独占，然后把混音关掉再打开。</dd>
             </div>
             <div>
+              <dt>回报问题</dt>
+              <dd>在 Stagio 电脑上，Settings → About → <b>Save diagnostics</b> 会存下一个文本文件，里面有版本、系统和 Stagio 日志的最后部分；PIN、钥匙和你的用户名都已去掉。回报时把它附在 <a href="https://github.com/Rojakiisme/stagio/issues/new/choose">GitHub</a> 上。</dd>
+            </div>
+            <div>
               <dt>换版本</dt>
               <dd>打开另一个版本。正在运行的那个会问你要不要换过去；设置、PIN、Cue 和节目流程都会带过去。卸载其中一个版本，共用的设置会留给其他版本。</dd>
             </div>
@@ -364,7 +369,7 @@
 
   <footer class="site-foot">
     <div class="wrap foot-row">
-      <span class="dim">Stagio · Windows：Lite 1.4 · Standard 1.5 · Extra 1.6 · Mac（测试版）：Lite 1.4 · Standard 1.4 · Extra 1.5</span>
+      <span class="dim">Stagio · Windows：Lite 1.5 · Standard 1.6 · Extra 1.7 · Mac（测试版）：Lite 1.5 · Standard 1.5 · Extra 1.6</span>
       <span class="links"><a href="../">下载</a><a href="https://github.com/Rojakiisme/stagio/releases">所有版本</a><a href="https://github.com/Rojakiisme/stagio">源代码</a><a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a></span>
     </div>
   </footer>

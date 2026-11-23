@@ -29,7 +29,13 @@ phones on the same network can be remotes. What protects it:
   the same computer cannot drive the desk.
 - **Stage display** (Extra): its own PIN and key, which reach only a short list of read-only paths
   (`STAGE_PATHS` in `server.js`); changing slides from there is off unless the desk allows it.
+- **Pages**: every page may run only the scripts Stagio's own server sends and talk only to it
+  (Content Security Policy, no inline scripts), so text that ends up in a page (a slide title, a
+  song name) can't run as code. The desktop window only ever shows the console; other sites open
+  in the normal browser.
 - **Bluetooth remote**: paired with the same PIN.
+- **Diagnostics** (Settings → About → Save diagnostics, on the computer itself): the PIN, keys,
+  pairing codes, the Wi-Fi password and the user's folder name are taken out of the file.
 - **Stored data**: settings, PIN and keys are kept in the user's own profile
   (`%APPDATA%\OneDesk\config.json`) and never leave the computer. Stagio signs in to no online
   service.

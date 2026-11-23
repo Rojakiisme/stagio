@@ -75,12 +75,13 @@ if (!app.requestSingleInstanceLock({ edition: edition.id, name: edition.name, ex
         title: `${edition.name} · countdown`,
         icon: fs.existsSync(icon) ? icon : undefined,
         autoHideMenuBar: true,
-        webPreferences: { contextIsolation: true, nodeIntegration: false },
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
       });
       if (proj) { cdWin.setAlwaysOnTop(true, 'screen-saver'); cdWin.setBounds(proj.bounds); }
       cdMode = want;
       cdWin.on('closed', () => { cdWin = null; cdMode = 'off'; });
       cdWin.webContents.on('will-navigate', (e) => e.preventDefault());
+      cdWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       cdWin.on('page-title-updated', (e) => e.preventDefault()); // keeps "Stagio Extra · countdown"
       cdWin.once('ready-to-show', () => cdWin?.showInactive());
       cdWin.loadURL(new URL('countdown.html', server.url).href);
@@ -148,15 +149,20 @@ if (!app.requestSingleInstanceLock({ edition: edition.id, name: edition.name, ex
       title: edition.name,
       icon: fs.existsSync(icon) ? icon : undefined,
       autoHideMenuBar: true,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'preload.js') },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.js') },
     });
     if (saved ? saved.maximized : small) win.maximize();
     consoleOrigin = new URL(url).origin;
     win.loadURL(url);
-    // A file dropped outside the console's own drop handling would otherwise replace the console
-    // with that file; the window only ever shows web pages (the console).
+    // The window only ever shows the console. A file dropped outside the console's own drop
+    // handling, or a link to another site, would otherwise replace it: other sites open in the
+    // normal browser instead.
     win.webContents.on('will-navigate', (e, target) => {
-      if (!/^https?:\/\//i.test(target)) e.preventDefault();
+      let origin = '';
+      try { origin = new URL(target).origin; } catch { /* not a web address */ }
+      if (origin === consoleOrigin) return;
+      e.preventDefault();
+      if (/^https?:\/\//i.test(target)) shell.openExternal(target);
     });
     // Web links (the guide, the source code) open in the normal browser (web links only).
     win.webContents.setWindowOpenHandler(({ url: target }) => {
