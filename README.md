@@ -81,8 +81,10 @@ A fix raises the last number, a new feature the middle one.
 - **Stage display** (Extra): a phone or tablet on the lectern shows the current and next slide, the
   notes in large type and the time left. It has its own PIN and can only look. The desk can send
   the speaker a message ("5 minutes left") and sees when it was read.
-- **Phone remote**: a web page, nothing to install. Scan the QR code, enter the 6-digit PIN. Keep
-  awake, full screen, and the main buttons fixed on screen.
+- **Phone remote**: a web page, nothing to install. Scan the QR code (it works for 10 minutes) or
+  enter the 6-digit PIN; each phone gets a key of its own. The Remote window lists the paired
+  devices: remove one, or make a new PIN and keys. Keep awake, full screen, and the main buttons
+  fixed on screen. The same Next pressed on two phones at once moves one slide, not two.
 - **No Wi-Fi?** Stagio can open its own Wi-Fi network (Windows), or an Android phone can connect
   over Bluetooth.
 - **Pre-show check**: one screen that lists whether the deck, thumbnails, projector, presenter view,
@@ -195,6 +197,7 @@ the access keys.
 - Some settings (which screen the show uses, hiding the presenter view, the countdown on a real
   projector, the Mac version with real PowerPoint) have not been tested with every setup yet.
   Try them before an event.
+- Phones talk to the computer over plain HTTP on the local network (see [SECURITY.md](SECURITY.md)).
 
 ## License
 

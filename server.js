@@ -15,6 +15,8 @@ const { Preview } = require('./lib/preview');
 const { Countdown } = require('./lib/countdown');
 const { Mixer } = require('./lib/mixer');
 const { Helper } = require('./lib/helper');
+const { Devices, deviceName } = require('./lib/devices');
+const { StepGuard } = require('./lib/stepguard');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
 const edition = require('./lib/edition').current();
@@ -187,40 +189,64 @@ app.use((req, res, next) => {
 });
 
 // ---------------- remote access ----------------
-// The PC itself is always trusted. Phones/tablets present the access key, which they get from the
-// QR code or by entering the PIN. The key is sent as a header (or ?key= for images and the live
-// stream), with a cookie as a fallback, so in-app browsers that drop cookies still work.
+// The PC itself is always trusted. Every phone or tablet has its own key (lib/devices.js), which it
+// gets from the QR code (a pairing code that works for 10 minutes) or by entering the PIN. The key
+// is sent as a header (or ?key= for images and the live stream), with a cookie as a fallback, so
+// in-app browsers that drop cookies still work. A device removed in the Remote window is out.
 
+const devices = new Devices(cfg, saveCfg);
+const CONSOLE = { id: 'console', name: 'This PC' };
 // X-OneDesk-Key: the same header from before the rename (Stagio was called OneDesk).
 const headerKey = (req) => req.get('x-stagio-key') || req.get('x-onedesk-key');
-const authorized = (req) => isLoopback(req)
-  || [headerKey(req), req.query.key, readCookie(req, 'od_key')].includes(cfg.accessKey);
+/** The device making the request: this PC, a paired phone or tablet, or null. */
+function identify(req) {
+  if (isLoopback(req)) return CONSOLE;
+  for (const k of [headerKey(req), req.query.key, readCookie(req, 'od_key')]) {
+    const d = devices.check(k);
+    if (d) return d;
+  }
+  return null;
+}
+const keyCookie = (key) => `od_key=${encodeURIComponent(key)}; Path=/; Max-Age=31536000; SameSite=Lax`;
 
 const loginFails = new Map(); // ip -> { n, until }
-/** Checks a PIN against `expected`; 8 wrong ones from one address lock it out for 5 minutes. */
-function pinLogin(req, res, expected) {
+/** Wrong PINs and pairing codes: 8 from one address lock it out for 5 minutes. */
+function guard(req, res, ok, what) {
   const ip = req.socket.remoteAddress;
   const f = loginFails.get(ip) || { n: 0, until: 0 };
-  if (Date.now() < f.until) { res.status(429).json({ ok: false, error: 'Too many wrong PINs. Try again in a few minutes.' }); return false; }
-  if (String(req.body?.pin || '').trim() !== expected) {
+  if (Date.now() < f.until) { res.status(429).json({ ok: false, error: 'Too many wrong tries. Try again in a few minutes.' }); return false; }
+  if (!ok) {
     f.n++;
     if (f.n >= 8) { f.n = 0; f.until = Date.now() + 5 * 60000; }
+    if (loginFails.size > 1000) loginFails.clear(); // many addresses: start the count over
     loginFails.set(ip, f);
-    res.status(401).json({ ok: false, error: 'Wrong PIN' });
+    res.status(401).json({ ok: false, error: what });
     return false;
   }
   loginFails.delete(ip);
   return true;
 }
+const pinOk = (req, expected) => String(req.body?.pin || '').trim() === expected;
+/** Signs a new device in: its own key, also as a cookie. */
+function signIn(res, added) {
+  res.setHeader('Set-Cookie', keyCookie(added.key));
+  res.json({ ok: true, data: { key: added.key } });
+  broadcast();
+}
 app.post('/api/login', (req, res) => {
-  if (!pinLogin(req, res, cfg.pin)) return;
-  res.setHeader('Set-Cookie', `od_key=${encodeURIComponent(cfg.accessKey)}; Path=/; Max-Age=31536000; SameSite=Lax`);
-  res.json({ ok: true, data: { key: cfg.accessKey } });
+  if (!guard(req, res, pinOk(req, cfg.pin), 'Wrong PIN')) return;
+  signIn(res, devices.add(deviceName(req.get('user-agent'))));
+});
+// The QR code in the Remote window: ?pair=<code>, swapped here for the phone's own key.
+app.post('/api/pair', (req, res) => {
+  const added = devices.pairWith(String(req.body?.code || '').trim(), deviceName(req.get('user-agent')));
+  if (!guard(req, res, !!added, 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.')) return;
+  signIn(res, added);
 });
 // Stage display (Extra): its own PIN gives its own key, which only reaches the stage display.
 app.post('/api/stage/login', (req, res) => {
   if (!ed.stage) return res.status(403).json({ ok: false, error: `The stage display is not part of ${edition.name}` });
-  if (!pinLogin(req, res, cfg.stagePin)) return;
+  if (!guard(req, res, pinOk(req, cfg.stagePin), 'Wrong PIN')) return;
   res.json({ ok: true, data: { key: cfg.stageKey } });
 });
 
@@ -229,9 +255,10 @@ app.post('/api/stage/login', (req, res) => {
 const STAGE_PATHS = [/^\/api\/ping$/, /^\/api\/stage\/(events|ack|next|prev)$/, /^\/api\/ppt\/thumb$/, /^\/api\/program$/];
 const isStageKey = (req) => ed.stage && !!cfg.stageKey && [headerKey(req), req.query.key].includes(cfg.stageKey);
 app.use((req, res, next) => {
-  if (authorized(req)) return next();
+  const dev = identify(req);
+  if (dev) { req.device = dev; return next(); }
   if (isStageKey(req)) {
-    if (STAGE_PATHS.some((p) => p.test(req.path))) { req.stage = true; return next(); }
+    if (STAGE_PATHS.some((p) => p.test(req.path))) { req.stage = true; req.device = { id: 'stage', name: 'Stage display' }; return next(); }
     return res.status(403).json({ ok: false, error: 'The stage display can only show; it cannot do this' });
   }
   res.status(401).json({ ok: false, error: 'Not signed in', login: true });
@@ -268,15 +295,17 @@ if (process.platform === 'win32') {
   setInterval(readWifiName, 60000);
 }
 
-// How to connect a phone: address, PIN and a QR code that carries the access key. Only the
-// console on this PC may ask; a phone that is already signed in has no use for it.
+// How to connect a phone: address, PIN and a QR code that carries a pairing code (it works for
+// 10 minutes; each phone that uses it gets a key of its own). Only the console on this PC may
+// ask; a phone that is already signed in has no use for it.
 app.get('/api/remote', async (req, res) => {
   if (!isLoopback(req)) return res.status(403).json({ ok: false, error: 'Only available on the Stagio PC' });
+  const pair = devices.pairCode();
   // Stagio's own Wi-Fi: a code that joins the network, then one that opens the console on it.
   let own = null;
   if (ownWifi.on && ownWifi.ip) {
     const join = `WIFI:T:WPA;S:${cfg.ownWifi.ssid};P:${cfg.ownWifi.pass};;`;
-    const openUrl = `http://${ownWifi.ip}:${cfg.port}/?key=${cfg.accessKey}`;
+    const openUrl = `http://${ownWifi.ip}:${cfg.port}/?pair=${pair.code}`;
     own = {
       ssid: cfg.ownWifi.ssid, pass: cfg.ownWifi.pass, url: `http://${ownWifi.ip}:${cfg.port}/`,
       joinQr: await QRCode.toString(join, { type: 'svg', margin: 1 }),
@@ -292,9 +321,10 @@ app.get('/api/remote', async (req, res) => {
     const stageUrl = host ? `http://${host}:${cfg.port}/stage.html` : null;
     stage = { url: stageUrl, pin: cfg.stagePin, qr: stageUrl ? await QRCode.toString(`${stageUrl}?key=${cfg.stageKey}`, { type: 'svg', margin: 1 }) : null };
   }
-  if (!lan && !own) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin } });
-  if (!lan) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin, url: null, others: [], qr: null, wifi: null } });
-  const qrUrl = `http://${lan}:${cfg.port}/?key=${cfg.accessKey}`;
+  const pairUntil = pair.until;
+  if (!lan && !own) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin, pairUntil } });
+  if (!lan) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin, pairUntil, url: null, others: [], qr: null, wifi: null } });
+  const qrUrl = `http://${lan}:${cfg.port}/?pair=${pair.code}`;
   res.json({
     ok: true,
     data: {
@@ -306,9 +336,32 @@ app.get('/api/remote', async (req, res) => {
       qrUrl,
       qr: await QRCode.toString(qrUrl, { type: 'svg', margin: 1 }),
       pin: cfg.pin,
+      pairUntil,
       wifi: wifiName,
     },
   });
+});
+
+// Paired phones and tablets, for the Remote window on this PC: remove one, or start over with a
+// new PIN and new keys (every phone, tablet and stage display then connects again).
+const onlyHere = (req, res, next) => (isLoopback(req) ? next() : res.status(403).json({ ok: false, error: 'Only available on the Stagio PC' }));
+const onlineDevices = () => new Set([...clients].map((c) => c.deviceId).filter(Boolean));
+app.get('/api/devices', onlyHere, (req, res) => res.json({ ok: true, data: devices.list(onlineDevices()) }));
+app.post('/api/devices/remove', onlyHere, (req, res) => {
+  const id = String(req.body?.id || '');
+  if (!devices.remove(id)) return res.status(404).json({ ok: false, error: 'That device is not in the list' });
+  for (const c of [...clients]) if (c.deviceId === id) c.end(); // its live connection ends now
+  broadcast();
+  res.json({ ok: true, data: devices.list(onlineDevices()) });
+});
+app.post('/api/remote/reset', onlyHere, (req, res) => {
+  devices.reset();
+  loginFails.clear();
+  for (const c of [...clients]) if (c.remote) c.end();
+  for (const c of [...stageClients]) c.end();
+  broadcast();
+  console.log('New PIN and keys made: phones, tablets and stage displays connect again');
+  res.json({ ok: true, data: { pin: cfg.pin } });
 });
 
 // ---------------- state & live updates ----------------
@@ -387,6 +440,7 @@ app.get('/api/events', (req, res) => {
   broadcast(); // bring `last` (and the consoles already connected) up to date first
   send(res, `{"_full":true,${joinParts(Object.entries(last))}}`);
   res.remote = !isLoopback(req);
+  res.deviceId = res.remote ? req.device?.id : null;
   clients.add(res);
   if (res.remote) broadcast(); // the count of connected phones changed
   req.on('close', () => { clients.delete(res); if (res.remote) broadcast(); });
@@ -631,8 +685,21 @@ const pptAfterBg = () => { ppt.poll().then(() => broadcast()); return Promise.re
 const showPath = () => ppt.state.show?.path;
 const DECK_FILE = /\.(pptx?|pptm|ppsx?|ppsm|potx?|potm|odp)$/i;
 
-app.post('/api/ppt/next', act(() => ppt.cmd('ppt.next'), pptAfterBg));
-app.post('/api/ppt/prev', act(() => ppt.cmd('ppt.prev'), pptAfterBg));
+// The same Next from two devices at once is one step (lib/stepguard.js).
+const steps = new StepGuard();
+const slideStep = (dir) => act(async (req) => {
+  const from = typeof req.body?.from === 'string' ? req.body.from.slice(0, 24) : null;
+  const token = steps.begin(dir, from, req.device?.id || '');
+  if (!token) return { skipped: true };
+  try {
+    return await ppt.cmd(dir === 'next' ? 'ppt.next' : 'ppt.prev');
+  } catch (e) {
+    steps.failed(token);
+    throw e;
+  }
+}, pptAfterBg);
+app.post('/api/ppt/next', slideStep('next'));
+app.post('/api/ppt/prev', slideStep('prev'));
 app.post('/api/ppt/goto', act((req) => {
   const { slide, id, path: p } = req.body;
   if (showPath() && (!p || p === showPath())) return ppt.cmd('ppt.goto', { slide, id });
@@ -1133,6 +1200,9 @@ app.put('/api/cues', act((req) => {
 app.post('/api/cues/:id/run', act(async (req) => {
   const cue = cfg.cues.find((c) => c.id === req.params.id);
   if (!cue) throw new Error('Cue not found');
+  // A second press while it is still running (a double click, or two phones) does not run it
+  // twice: its steps (next slide, fades) would happen twice.
+  if (cues.isRunning(cue.id)) return { skipped: true };
   autoCues.noteRun(cue.id);
   startSegment(cue.name);
   broadcast();
@@ -1314,7 +1384,7 @@ const ready = new Promise((resolve, reject) => {
   const server = app.listen(cfg.port, '0.0.0.0', () => {
     console.log(`Stagio running at ${url}`);
     const [lan] = lanAddresses();
-    if (lan) console.log(`Remote (same Wi-Fi): http://${lan}:${cfg.port}/  PIN ${cfg.pin}`);
+    if (lan) console.log(`Remote (same Wi-Fi): http://${lan}:${cfg.port}/  (PIN: in the Remote window)`);
     if (process.argv.includes('--open') && process.platform === 'win32') {
       spawn('cmd', ['/c', 'start', '', 'msedge', `--app=${url}`, '--window-size=1440,900'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     }

@@ -297,6 +297,13 @@
     </div>
     <p class="warn-text hidden" id="remoteNoLan">This PC is not on any network. Use Stagio Wi-Fi below.</p>
     <div class="remote-alt"><div><span class="label">PIN</span><code class="mono pin" id="remotePin"></code></div></div>
+    <p class="hint" id="pairHint">The code works for 10 minutes. Each phone that scans it, or enters the PIN, gets a key of its own.</p>
+
+    <!-- Every phone or tablet signed in: remove one, or start over with a new PIN and keys -->
+    <div class="link-card devices" id="devicesBox">
+      <div class="link-h"><b>Paired phones and tablets</b><span class="grow"></span><button class="btn sm" id="btnResetKeys" title="A new PIN, new codes and new keys: every phone, tablet and stage display has to connect again">New PIN and keys</button></div>
+      <ul class="dev-list" id="devList"></ul>
+    </div>
 
     <!-- Extra: the speaker's view-only screen -->
     <div class="link-card stage-card needs-stage" id="stageCard">

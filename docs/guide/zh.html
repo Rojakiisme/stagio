@@ -94,8 +94,8 @@
                 <tr data-os="win"><td>混音、耳机预听</td><td>–</td><td>基本</td><td>完整</td></tr>
                 <tr><td>节目流程、讲台提示屏和控台讯息</td><td>–</td><td>–</td><td class="y">有</td></tr>
                 <tr><td>第一次要设定的</td><td>打开文件，手机扫码</td><td>再在播放程序里放一次音乐、接投影机</td><td>再排节目流程</td></tr>
-                <tr data-os="win"><td>版本（Windows）</td><td>Beta 1.3.1</td><td>Beta 1.4.1</td><td>Beta 1.5.1</td></tr>
-                <tr data-os="mac"><td>版本（Mac 测试版）</td><td>Beta 1.3.1</td><td>Beta 1.3.1</td><td>Beta 1.4.1</td></tr>
+                <tr data-os="win"><td>版本（Windows）</td><td>Beta 1.4</td><td>Beta 1.5</td><td>Beta 1.6</td></tr>
+                <tr data-os="mac"><td>版本（Mac 测试版）</td><td>Beta 1.4</td><td>Beta 1.4</td><td>Beta 1.5</td></tr>
               </tbody>
             </table>
           </div>
@@ -169,11 +169,12 @@
             <div>
               <ol>
                 <li>手机和电脑连同一个 Wi-Fi。</li>
-                <li>在电脑上点 <b>Remote</b>，用手机相机扫二维码。或者输入显示的网址，再输入 6 位数 PIN。</li>
+                <li>在电脑上点 <b>Remote</b>，用手机相机扫二维码（二维码 10 分钟内有效，窗口里会自动换新的）。或者输入显示的网址，再输入 6 位数 PIN。</li>
                 <li>加到主屏幕（步骤写在 Remote 窗口里），以后像 App 一样打开。</li>
               </ol>
               <p>手机上是同一个控台：Program、Preview、备注、计时，以及四个翻页按钮，滚动时会固定在屏幕上。<b>Awake</b> 让屏幕保持亮着，<b>Full</b> 隐藏浏览器的工具栏。在 Settings → Screen 里可以让顶栏和按钮跟着滚动，也可以调整备注字号。</p>
-              <p>连续输错 8 次 PIN，那支手机会被锁 5 分钟。</p>
+              <p><b>每支手机各有自己的钥匙。</b>Remote 窗口列出已配对的手机和平板、哪些正在连线、各自最后一次使用的时间。按 <b>Remove</b> 立刻移除一台（离开的义工、遗失的手机）；按 <b>New PIN and keys</b> 换新的 PIN 和钥匙，所有手机、平板和提示屏都要重新连接。90 天没用过的设备会自动移除。连续输错 8 次 PIN，那支手机会被锁 5 分钟。</p>
+              <p>两支手机（或手机和电脑）同时按 Next，只会翻一页，不会翻两页。同一支手机快速连按两次，仍然翻两页。</p>
               <h3>没有 Wi-Fi？</h3>
               <ul>
                 <li data-os="win"><b>Stagio Wi-Fi</b>：电脑开一个自己的网络。扫第一个二维码加入网络，再扫第二个打开 Stagio。iPhone 和 Android 都可以。</li>
@@ -222,7 +223,7 @@
           <p>一个 Cue 用一个按钮执行好几个步骤，例如“开场：音乐淡出，从第 1 页开始放映”，或“中场：黑屏，音乐淡入”。在 <b>Cues → Edit</b> 里编辑：音乐步骤（播放、暂停、淡入淡出、音量）、投影片步骤（开始、跳页、下一页、黑屏、白屏、结束）、输出步骤（音频设备、系统音量、投影模式<span data-os="win">，Extra 还有耳机预听和混音场景</span>）和等待。淡入淡出在背景进行，所以下一个步骤会马上开始。</p>
           <figure><img src="img/cue-editor.png" alt="Cue 编辑画面" loading="lazy"></figure>
           <ul>
-            <li>按 <b>1–9</b> 执行前 9 个 Cue。为了避免误按，可以在 Settings → Keys 里改成要按 <b>Shift + 1–9</b>。</li>
+            <li>Cue 还在执行时，再按一次不会重复执行。按 <b>1–9</b> 执行前 9 个 Cue。为了避免误按，可以在 Settings → Keys 里改成要按 <b>Shift + 1–9</b>。</li>
             <li><b>翻到某一页时自动执行</b>：放映往前翻到那一页时执行（往回翻不会）。前面插入或移动页面后，Cue 仍然跟着那一页。</li>
             <li>做投影片的人也可以在那一页的备注里写 <code>[cue: Break]</code>（写 Cue 名称的开头即可），效果一样。</li>
             <li><b>Auto on / off</b> 一次打开或关掉全部自动执行。</li>
@@ -251,6 +252,7 @@
             <li>这一段的剩余时间超时会变琥珀色，超过 2 分钟变红色。旁边显示整场比预定快了或慢了多少。</li>
             <li>下一段的文件会在这一段进行时先在后台打开（不开窗口），所以换讲员大约只要半秒。</li>
             <li>直接点某一段时会先问 <i>Go here?</i>，误点不会切换。<b>Back</b> 回到上一段；<b>Stop</b> 结束流程（投影片不会被关掉）。</li>
+            <li>只有下一段真正开始了，流程才会往前走。下一段的文件打不开或放映开不起来时，流程停在投影上还在的那一段（计时照走），并说明原因；修好后再按一次就行。</li>
             <li>找不到的文件会在 Run 栏和开场前检查里用红字标出来。Stagio 重开后，流程会停在原来那一段继续。</li>
           </ul>
         </section>
@@ -335,6 +337,10 @@
               <dd>它在 PowerPoint 的“受保护的视图”里。点琥珀色的 <b>Protected View · enable editing</b> 标签。</dd>
             </div>
             <div>
+              <dt>手机显示已经不再配对</dt>
+              <dd>它在 Remote 窗口里被移除了，或电脑换了新的 PIN 和钥匙。重新扫码或输入 PIN 即可。之前版本配对的手机共用一把旧钥匙，列表里显示为一项：那些手机都扫过新码后，就可以把它移除。</dd>
+            </div>
+            <div>
               <dt>音乐没有反应</dt>
               <dd>在播放程序<span data-os="mac">（“音乐”或 Spotify）</span>里放一首歌；之后 Stagio 就能控制它，暂停时也可以。好几个程序都在放时，在 Music 区上方的选单里选对的那个。</dd>
             </div>
@@ -358,7 +364,7 @@
 
   <footer class="site-foot">
     <div class="wrap foot-row">
-      <span class="dim">Stagio · Windows：Lite 1.3.1 · Standard 1.4.1 · Extra 1.5.1 · Mac（测试版）：Lite 1.3.1 · Standard 1.3.1 · Extra 1.4.1</span>
+      <span class="dim">Stagio · Windows：Lite 1.4 · Standard 1.5 · Extra 1.6 · Mac（测试版）：Lite 1.4 · Standard 1.4 · Extra 1.5</span>
       <span class="links"><a href="../">下载</a><a href="https://github.com/Rojakiisme/stagio/releases">所有版本</a><a href="https://github.com/Rojakiisme/stagio">源代码</a><a href="https://github.com/Rojakiisme/stagio/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a></span>
     </div>
   </footer>

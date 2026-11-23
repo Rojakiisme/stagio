@@ -13,10 +13,17 @@ Supported: the newest version of each edition (Lite, Standard, Extra) on the dow
 Stagio is a small web server on the presentation computer (port 7300, all network interfaces), so
 phones on the same network can be remotes. What protects it:
 
-- **The computer itself** (loopback) is trusted. Every other device needs the **access key**, which
-  it gets by scanning the QR code shown on the computer, or by entering the 6-digit **PIN** shown
-  there. Eight wrong PINs from one address lock that address out for five minutes.
-- **Pairing details** (`/api/remote`: PIN, key, QR code) are only given to the computer itself.
+- **The computer itself** (loopback) is trusted. Every other device has **a key of its own**
+  (`lib/devices.js`), which it gets by scanning the QR code shown on the computer or by entering
+  the 6-digit **PIN** shown there. The QR code carries a **pairing code** that works for 10 minutes,
+  never a key, so a photo of the screen is useless afterwards. Eight wrong PINs or codes from one
+  address lock that address out for five minutes.
+- **Paired devices** are listed in the Remote window (kind of device, connected now, last used).
+  **Remove** puts one out at once; **New PIN and keys** makes a new PIN, stage PIN and keys, so
+  every phone, tablet and stage display has to connect again. A device not used for 90 days is
+  forgotten. `config.json` keeps only a SHA-256 hash of each key.
+- **Pairing details** (`/api/remote`, `/api/devices`: PIN, codes, the list) are only given to the
+  computer itself, and only the computer can remove devices or make new keys.
 - **Cross-site requests and DNS rebinding**: requests whose `Host` is not this computer, or whose
   `Origin` / `Sec-Fetch-Site` shows another site, are refused, so a web page open in a browser on
   the same computer cannot drive the desk.
@@ -32,8 +39,12 @@ phones on the same network can be remotes. What protects it:
 - The connection between phone and computer is **plain HTTP** on the local network. Someone who can
   watch that network's traffic could see the access key. Use a network you trust, or Stagio's own
   Wi-Fi (Windows; it has its own password).
-- There is no button yet for a new PIN and key. To get new ones, close Stagio, remove `pin`,
-  `accessKey`, `stagePin` and `stageKey` from `config.json`, and start it again.
+- Phones paired before this version (Windows Lite 1.4 / Standard 1.5 / Extra 1.6, Mac 1.4 / 1.4 /
+  1.5) share one key from before;
+  they keep working, listed as one entry, until it is removed or new keys are made. Remove it once
+  those phones have scanned the new code.
+- The stage display key is one key for all stage displays (they can only look); **New PIN and
+  keys** changes it.
 - Anyone who can use the presentation computer's Windows account can use Stagio.
 - The Windows installers are not code-signed yet (see [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md));
   the Mac version is not signed by Apple. Download only from this repository's releases or the

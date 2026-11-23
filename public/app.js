@@ -6,16 +6,21 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor((ms || 0) / 1000)); retur
 const isPC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 
 // ---------------- remote sign-in ----------------
-// Phones get the access key from the QR code (?key=...) or by entering the PIN. It is kept in
-// this browser and sent with every request, so it works even where cookies are blocked.
+// Each phone gets a key of its own: from the QR code (?pair=..., a code that works for 10 minutes,
+// swapped for the key at once) or by entering the PIN. The key is kept in this browser and sent
+// with every request, so it works even where cookies are blocked. (?key=... is the link from
+// before: it still works until the phones paired before are removed in the Remote window.)
 const store = {
   get() { try { return localStorage.getItem('onedesk.key'); } catch { return null; } },
   set(v) { try { localStorage.setItem('onedesk.key', v); } catch { /* private mode: the cookie still works */ } },
   clear() { try { localStorage.removeItem('onedesk.key'); } catch { /* ignore */ } },
 };
+const PAIR_CODE = isPC ? null : new URLSearchParams(location.search).get('pair');
 (() => {
-  const k = new URLSearchParams(location.search).get('key');
-  if (k) { store.set(k); history.replaceState(null, '', location.pathname); }
+  const q = new URLSearchParams(location.search);
+  const k = q.get('key');
+  if (k) store.set(k);
+  if (k || q.get('pair')) history.replaceState(null, '', location.pathname); // the code is not left in the address bar
 })();
 let KEY = isPC ? null : (new URLSearchParams(location.search).get('key') || store.get());
 /** Adds the access key to URLs the browser loads by itself (images, live stream). */
@@ -165,16 +170,37 @@ function setLink(up) {
   document.body.classList.toggle('link-lost', !up);
 }
 
+/** A pairing code from the QR code: swapped for this phone's own key. */
+let pairing = PAIR_CODE;
+async function pair() {
+  const code = pairing;
+  pairing = null; // once: a reload or a reconnect doesn't send it again
+  try {
+    const r = await fetchT('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }, 10000);
+    const j = await r.json();
+    if (!j.ok) return j.error || 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.';
+    KEY = j.data.key;
+    store.set(KEY);
+    return null;
+  } catch {
+    return 'Cannot reach the Stagio PC. Check that it is running and on the same Wi-Fi.';
+  }
+}
+
 /** Checks access first (the live stream itself can't report "not signed in"), then connects. */
 async function start() {
   if (connecting) return;
   connecting = true;
+  if (pairing) {
+    const problem = await pair();
+    if (problem) { connecting = false; showLogin(problem); return; }
+  }
   try {
     const t0 = Date.now();
     const r = await fetchT('/api/ping', { headers: authHeaders() }, 6000);
     if (r.status === 401) {
       if (es) { es.close(); es = null; }
-      if (KEY) { store.clear(); KEY = null; showLogin('That access link is no longer valid. Enter the PIN.'); } else showLogin();
+      if (KEY) { store.clear(); KEY = null; showLogin('This phone is no longer paired (it was removed, or the PIN and keys were renewed on the Stagio PC). Scan the code again or enter the PIN.'); } else showLogin();
       return;
     }
     // The show timer counts on the PC's clock; a phone's own clock may be off by a minute.
@@ -670,8 +696,11 @@ async function pptSend(path, body, timeoutMs) {
     if (--pptPending === 0) document.body.classList.remove('ppt-busy');
   }
 }
-const pptNext = () => pptSend('/api/ppt/next');
-const pptPrev = () => pptSend('/api/ppt/prev');
+// Each press says which slide (and animation step) it saw, so the same press from two phones at
+// once moves one step, not two (see /api/ppt/next).
+const stepFrom = () => { const sh = S?.ppt?.show; return sh?.slide ? { from: `${sh.slide}.${sh.click || 0}` } : {}; };
+const pptNext = () => pptSend('/api/ppt/next', stepFrom());
+const pptPrev = () => pptSend('/api/ppt/prev', stepFrom());
 const pptState = (state) => pptSend('/api/ppt/state', { state });
 const pptStart = () => pptSend('/api/ppt/start', { path: S?.ppt.focus, slide: 1 }, SLOW);
 
@@ -1478,7 +1507,11 @@ function renderCues() {
 }
 $('#btnAutoCues').onclick = () => post('/api/settings', { autoCues: !S.settings?.autoCues });
 
-function runCue(id) { return post(`/api/cues/${encodeURIComponent(id)}/run`, {}, VERY_SLOW); }
+async function runCue(id) {
+  const r = await post(`/api/cues/${encodeURIComponent(id)}/run`, {}, VERY_SLOW);
+  if (r?.skipped) toast('That cue is still running', 'info');
+  return r;
+}
 $('#cues').addEventListener('click', (e) => {
   const b = e.target.closest('[data-cue]');
   if (b) runCue(b.dataset.cue);
@@ -1822,6 +1855,11 @@ async function fillRemote(open) {
     $('#qr').innerHTML = r.qr;
   }
   $('#remotePin').textContent = r.pin;
+  if (r.pairUntil) {
+    const until = new Date(r.pairUntil - clockOffset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    $('#pairHint').textContent = `The code works until ${until} (a new one appears here before then). Each phone that scans it, or enters the PIN, gets a key of its own.`;
+  }
+  fillDevices();
   const own = r.own;
   $('#ownWifiOn').classList.toggle('hidden', !own);
   if (own) {
@@ -1839,9 +1877,55 @@ async function fillRemote(open) {
   }
   renderLinks();
   if (!r.url || own || S?.links?.bluetooth?.on) $('#remoteBackup').open = true;
-  if (open) $('#dlgRemote').showModal();
+  if (open) {
+    $('#dlgRemote').showModal();
+    // While it is open: the list every few seconds, a fresh code before the old one runs out.
+    clearInterval(remoteTimer);
+    let ticks = 0;
+    remoteTimer = setInterval(() => {
+      if (!$('#dlgRemote').open) { clearInterval(remoteTimer); return; }
+      if (++ticks % 20 === 0) fillRemote(false); else fillDevices();
+    }, 3000);
+  }
 }
+let remoteTimer = null;
 $('#btnRemote').onclick = () => fillRemote(true);
+
+/** "5 min ago", "3 h ago", "21 Nov": when a device was last used. */
+function agoText(t) {
+  if (!t) return '';
+  const min = Math.round((Date.now() + clockOffset - t) / 60000);
+  if (min < 6) return 'in the last few minutes';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} h ago`;
+  return new Date(t - clockOffset).toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+async function fillDevices() {
+  let list;
+  try { list = await api('/api/devices'); } catch { return; }
+  const html = list.length ? list.map((d) => `<li>
+      <span class="dev-dot${d.online ? ' on' : ''}" title="${d.online ? 'Connected now' : 'Not connected'}"></span>
+      <span class="dev-name">${esc(d.name)}${d.legacy ? ' <span class="dim">(one shared key)</span>' : ''}</span>
+      <span class="dim dev-when">${d.online ? 'connected' : esc(agoText(d.lastSeen))}</span>
+      <button class="btn sm" data-dev="${esc(d.id)}" title="${d.legacy ? 'Phones that still use the shared key from before then need to scan the new code' : 'This device then has to scan the code or enter the PIN again'}">Remove</button></li>`).join('')
+    : '<li class="dim">None yet. Phones and tablets appear here once they scan the code or enter the PIN.</li>';
+  const box = $('#devList');
+  if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
+}
+$('#devList').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-dev]');
+  if (!b || !confirmTap(b, 'Remove?')) return;
+  try { await api('/api/devices/remove', { id: b.dataset.dev }); } catch { /* the toast says why */ }
+  fillDevices();
+});
+$('#btnResetKeys').onclick = async (e) => {
+  if (!confirmTap(e.currentTarget, 'Press again: all connect again')) return;
+  try {
+    await api('/api/remote/reset', {});
+    toast('New PIN and keys. Phones, tablets and stage displays need to connect again.', 'info');
+  } catch { return; }
+  fillRemote(false);
+};
 
 /** Stagio Wi-Fi and Bluetooth: on/off state in the Remote dialog (from the live state). */
 function renderLinks() {
@@ -2273,7 +2357,7 @@ function renderRun() {
   }
   const open = new Set(S.run.open || []);
   const html = (show?.parts || []).map((p, i) => {
-    const st = !a ? '' : i < a.index ? ' done' : i === a.index ? ' now' : '';
+    const st = !a ? '' : (i === a.entering ? ' starting' : '') + (i < a.index ? ' done' : i === a.index ? ' now' : '');
     return `<button class="rp${st}${partMissing(p) ? ' miss' : ''}${open.has(p.id) && (!a || i > a.index) ? ' ready' : ''}" data-part="${i}" title="${esc(partTitle(p))}${open.has(p.id) ? ' · open in PowerPoint' : ''}">
       <span class="rk">${i + 1}</span><span class="rn">${esc(p.name)}</span>${p.minutes ? `<span class="rm mono">${p.minutes}′</span>` : ''}</button>`;
   }).join('') || '<span class="dim">No parts yet. Edit… to plan the event.</span>';
@@ -2285,7 +2369,7 @@ function renderRun() {
   }
   const cdNow = a && show?.parts[a.index]?.kind === 'countdown';
   const msg = a?.error ? ['bad', a.error]
-    : a?.busy ? ['', 'Starting the part…']
+    : a?.busy ? ['', show?.parts[a.entering] ? `Starting “${show.parts[a.entering].name}”…` : 'Starting the part…']
       : a?.note ? ['warn', a.note]
         : cdNow && a.screen === 'window' ? ['warn', 'Only one screen: the countdown is in a window on this screen. With the projector in Extend it fills the projector.']
           : cdNow && a.screen === 'none' ? ['warn', 'The countdown screen needs the Stagio app (not a browser window).']

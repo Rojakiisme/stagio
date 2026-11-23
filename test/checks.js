@@ -6,6 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// The running server's data folder, when the caller says (the config checks below use their own).
+const SERVER_DATA = process.env.STAGIO_DATA || '';
+
 const results = [];
 function check(name, pass, detail = '') {
   results.push(pass);
@@ -543,8 +546,13 @@ async function runChecks() {
   check('on a Mac the old show ends before the next one starts', calls.slice(0, 3).join(' ') === 'ppt.open:B.pptx:bg ppt.endOthers:B.pptx ppt.start:B.pptx' && ppt.state.show.slide === 3, calls.join(' '));
   delete ppt.endBeforeStart;
 
+  const segAtB = ros.run.segAt;
   const noFile = await ros.next().then(() => 'went', (e) => e.message);
-  check('a part without a file says so, and the run stays on it', /has no file/.test(noFile) && ros.run.index === 4 && /has no file/.test(ros.summary().active.error), noFile);
+  check('a part whose file is missing says so, and the run stays on the part still on screen (its timer goes on)',
+    /has no file/.test(noFile) && ros.run.index === 3 && ros.run.segAt === segAtB && /did not start/.test(ros.summary().active.error) && !ros.summary().active.busy, noFile);
+  ros.show('r1').parts[4].file = fileA;
+  await ros.next();
+  check('...and once the file is there, the same press goes on', ros.run.index === 4 && !ros.summary().active.error);
   const pastEnd = await ros.next().then(() => 'went', (e) => e.message);
   check('there is nothing after the last part', /last part/.test(pastEnd));
 
@@ -568,6 +576,10 @@ async function runChecks() {
   check('a run started part-way is on time from there (not ahead by the skipped parts)', mid.segAt - mid.startedAt === mid.plannedBefore && mid.plannedBefore === 30 * 60000);
   ros.setShows([]);
   check('deleting the run in progress stops it', ros.run === null);
+
+  ros.setShows([{ id: 'r2', name: 'Broken', parts: [{ id: 'g', kind: 'slides', name: 'Gone', minutes: 5, file: path.join(tmp, 'gone.pptx') }] }]);
+  const notStarted = await ros.start('r2').then(() => 'went', (e) => e.message);
+  check('a run whose first part does not start is not left half-started', /did not start/.test(notStarted) && ros.run === null, notStarted);
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -606,7 +618,14 @@ async function serverChecks() {
     const lan = remote.data.url.replace(/\/$/, '');
     const noKey = await fetch(`${lan}/api/state`).catch(() => null);
     check('LAN request without a key is refused', noKey?.status === 401, `status ${noKey?.status}`);
-    const key = new URL(remote.data.qrUrl).searchParams.get('key');
+    // The QR code carries a pairing code, never a key; the phone swaps it for a key of its own.
+    const code = new URL(remote.data.qrUrl).searchParams.get('pair');
+    check('the QR code carries a pairing code, not a key', !!code && !new URL(remote.data.qrUrl).searchParams.get('key') && remote.data.pairUntil - Date.now() > 8 * 60000);
+    const paired = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1' }, body: JSON.stringify({ code }) }).then((r) => r.json()).catch(() => ({}));
+    const key = paired.data?.key;
+    check('scanning it gives the phone its own key', paired.ok === true && typeof key === 'string' && key.length >= 20);
+    const wrongCode = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'not-the-code' }) }).then((r) => r.status).catch(() => 0);
+    check('a wrong pairing code gives nothing', wrongCode === 401, `status ${wrongCode}`);
     const withKey = await fetch(`${lan}/api/state`, { headers: { 'X-Stagio-Key': key } }).catch(() => null);
     check('LAN request with the key is accepted', withKey?.status === 200, `status ${withKey?.status}`);
     const remoteFromLan = await fetch(`${lan}/api/remote`, { headers: { 'X-Stagio-Key': key } }).catch(() => null);
@@ -826,7 +845,120 @@ async function serverChecks() {
   } else {
     check('the run of show is refused outside Extra', (await status('/api/run/next')) === 403 && now.run === null);
   }
+
+  // A cue pressed again while it still runs is left out (its steps would happen twice).
+  if (ed.features.cues) {
+    const tmpCue = { id: 'checks-wait', name: 'Checks wait', color: 'green', steps: [{ type: 'wait', seconds: 1.5 }] };
+    const cuesNow = (await get('/api/state').then((r) => r.json())).cues;
+    await fetch(`${BASE}/api/cues`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([...cuesNow, tmpCue]) });
+    const firstRun = post('/api/cues/checks-wait/run').then((r) => r.json());
+    await sleep(200);
+    const secondRun = await post('/api/cues/checks-wait/run').then((r) => r.json());
+    const firstDone = await firstRun;
+    check('a cue pressed again while it runs is not run twice', secondRun.ok && secondRun.data?.skipped === true && firstDone.ok && !firstDone.data?.skipped, JSON.stringify(secondRun));
+    await fetch(`${BASE}/api/cues`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuesNow) });
+  }
+
+  // Paired devices: each has its own key; one can be removed; a new PIN and keys put everyone out.
+  if (remote.data?.url) {
+    const lan = remote.data.url.replace(/\/$/, '');
+    const pairNew = async (ua) => {
+      const r = await get('/api/remote').then((x) => x.json());
+      const code = new URL(r.data.qrUrl).searchParams.get('pair');
+      const j = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': ua }, body: JSON.stringify({ code }) }).then((x) => x.json());
+      return j.data?.key;
+    };
+    const lanStatus = (key) => fetch(`${lan}/api/state`, { headers: { 'X-Stagio-Key': key } }).then((r) => r.status).catch(() => 0);
+    const k1 = await pairNew('Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/131.0 Mobile Safari/537.36');
+    const k2 = await pairNew('Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Safari/604.1');
+    check('two phones get two different keys', !!k1 && !!k2 && k1 !== k2);
+    const list = await get('/api/devices').then((r) => r.json());
+    const d1 = list.data?.find((d) => d.name === 'Android phone · Chrome');
+    check('the Remote window lists them by kind of device (no keys in the list)', !!d1 && list.data.some((d) => d.name === 'iPad · Safari') && !JSON.stringify(list).includes(k1));
+    const fromLan = await fetch(`${lan}/api/devices`, { headers: { 'X-Stagio-Key': k1 } }).then((r) => r.status).catch(() => 0);
+    check('the device list is only for the Stagio PC', fromLan === 403, `status ${fromLan}`);
+    const cfgFile = SERVER_DATA && path.join(SERVER_DATA, 'config.json');
+    const cfgText = cfgFile && fs.existsSync(cfgFile) ? fs.readFileSync(cfgFile, 'utf8') : null;
+    if (cfgText !== null) check('config.json keeps only a hash of each device key', !cfgText.includes(k1) && !cfgText.includes(k2));
+    await post('/api/devices/remove', {}, JSON.stringify({ id: d1?.id }));
+    check('a removed phone is out, the others stay in', (await lanStatus(k1)) === 401 && (await lanStatus(k2)) === 200);
+
+    // Next from two devices for the same slide at once never moves two steps. (Without a slide
+    // show both fail or one is left out; the logic itself is checked without PowerPoint above.)
+    const nx1 = post('/api/ppt/next', {}, JSON.stringify({ from: '7.0' })).then((r) => r.json());
+    const nx2 = await fetch(`${lan}/api/ppt/next`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k2 }, body: JSON.stringify({ from: '7.0' }) }).then((r) => r.json());
+    const nx1r = await nx1;
+    const moved = [nx1r, nx2].filter((r) => r.ok && !r.data?.skipped).length;
+    check('Next for the same slide from two devices at once never moves two steps', moved <= 1, `${JSON.stringify(nx1r)} ${JSON.stringify(nx2)}`);
+
+    const oldPin = (await get('/api/remote').then((r) => r.json())).data.pin;
+    const reset = await post('/api/remote/reset').then((r) => r.json());
+    const afterReset = await get('/api/remote').then((r) => r.json());
+    check('New PIN and keys: a new PIN, and every phone has to connect again', reset.ok && afterReset.data.pin !== oldPin && (await lanStatus(k2)) === 401);
+    const resetFromLan = await fetch(`${lan}/api/remote/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k2 }, body: '{}' }).then((r) => r.status).catch(() => 0);
+    check('...which only the Stagio PC can do', resetFromLan === 401 || resetFromLan === 403, `status ${resetFromLan}`);
+  }
   ctrl.abort();
+}
+
+// ---------------------------------------------------------------- paired devices
+function deviceChecks() {
+  const { Devices, deviceName } = require('../lib/devices');
+  let clock = Date.parse('2026-11-23T10:00:00');
+  let saves = 0;
+  const cfg = { accessKey: 'shared-key-from-before', pin: '123456', stagePin: '654321', stageKey: 'stage' };
+  const dev = new Devices(cfg, () => { saves++; }, () => clock);
+  check('an existing install: phones with the shared key from before stay in, as one entry', !!dev.check('shared-key-from-before')?.legacy && cfg.devices.length === 1);
+  const fresh = new Devices({ accessKey: 'x', devicesSince: 1 }, () => {}, () => clock);
+  check('a new install has no shared key entry', fresh.list().length === 0 && !fresh.check('x'));
+  const p = dev.pairCode();
+  check('a pairing code works for 10 minutes', p.until - clock === 10 * 60000 && /^[a-z2-9]{10}$/.test(p.code));
+  check('a wrong code is useless', dev.pairWith('aaaaaaaaaa', 'x') === null && dev.pairWith('', 'x') === null);
+  const a = dev.pairWith(p.code, 'iPhone · Safari');
+  const b = dev.pairWith(p.code, 'Android phone · Chrome');
+  check('every phone that uses the code gets its own key', a && b && a.key !== b.key && dev.check(a.key)?.id === a.device.id);
+  check('only a hash of the keys is kept', !JSON.stringify(cfg).includes(a.key) && !JSON.stringify(cfg).includes(b.key));
+  clock += 5 * 60000;
+  check('the Remote window keeps the same code while it has time left', dev.pairCode().code === p.code);
+  clock += 3.5 * 60000;
+  const p2 = dev.pairCode();
+  check('...and gets a new one when less than 2 minutes are left', p2.code !== p.code);
+  check('...while the old one still works to the end of its 10 minutes (a phone may have just scanned it)', !!dev.pairWith(p.code, 'x'));
+  clock += 2 * 60000;
+  check('after its 10 minutes the old code is useless, the new one still works', dev.pairWith(p.code, 'x') === null && !!dev.pairWith(p2.code, 'x'));
+  clock += 10 * 60000;
+  check('after 10 minutes a code is useless', dev.pairWith(p2.code, 'x') === null);
+  dev.remove(a.device.id);
+  check('a removed device is out, the others stay in', !dev.check(a.key) && !!dev.check(b.key));
+  dev.remove('before');
+  check('removing the phones from before also changes the shared key (an older Stagio stops taking it)', cfg.accessKey !== 'shared-key-from-before' && !dev.check('shared-key-from-before'));
+  const oldPin = cfg.pin;
+  dev.reset();
+  check('New PIN and keys: new PIN and stage PIN, no devices left', cfg.pin !== oldPin && /^\d{6}$/.test(cfg.pin) && cfg.stagePin !== cfg.pin && cfg.devices.length === 0 && !dev.check(b.key));
+  const c = dev.add('Mac · Safari');
+  clock += 91 * 24 * 3600000;
+  dev.prune();
+  check('a device not used for 90 days is forgotten', !dev.check(c.key));
+  check('device names come from the browser', deviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1') === 'iPhone · Safari'
+    && deviceName('Mozilla/5.0 (Linux; Android 15; SM-S921B) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36') === 'Android phone · Chrome');
+  check('"last used" is saved now and then, not on every request', (() => { const n = saves; const d = dev.add('x'); for (let i = 0; i < 50; i++) dev.check(d.key); return saves - n === 1; })());
+
+  // The same Next from two devices at once is one step; one device's quick double press is two.
+  const { StepGuard } = require('../lib/stepguard');
+  let t = 1000;
+  const g = new StepGuard(2000, () => t);
+  const phoneA = g.begin('next', '5.0', 'A');
+  check('Next: the first press goes', !!phoneA);
+  check('Next: the same press from another device at the same time is left out', g.begin('next', '5.0', 'B') === null);
+  check('Next: a quick second press on the same device goes (meant as two steps)', !!g.begin('next', '5.0', 'A'));
+  check('Next: a press for the slide after goes', !!g.begin('next', '6.0', 'B'));
+  t += 2500;
+  check('Next: the same place 2 s later goes (someone pressed again on purpose)', !!g.begin('next', '6.0', 'C'));
+  check('Next / Prev are told apart', !!g.begin('prev', '6.0', 'D'));
+  const failing = g.begin('next', '9.0', 'A');
+  g.failed(failing);
+  check('Next: a step that failed does not hold back another device', !!g.begin('next', '9.0', 'B'));
+  check('Next: a press without a place (stage display, Bluetooth) always goes', !!g.begin('next', null, 'A') && !!g.begin('next', null, 'B'));
 }
 
 (async () => {
@@ -841,6 +973,7 @@ async function serverChecks() {
     await fadeChecks();
     imageChecks();
     editionChecks();
+    deviceChecks();
     await runChecks();
     if (process.argv.includes('--server')) await serverChecks();
   } catch (e) {
