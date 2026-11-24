@@ -28,7 +28,7 @@
   <main class="wrap prose">
     <p class="label"><span class="zh">隐私</span><span class="en">Privacy</span></p>
     <h1><span class="zh">你的活动留在你的电脑上</span><span class="en">Your events stay on your computer</span></h1>
-    <p class="lead"><span class="zh">Stagio 完全在你的电脑上运行：不需要账号，不上云端，没有统计或追踪，也不会自己检查更新。除非你自己把文件发出去，关于你的活动的任何资料都不会离开这台电脑。</span><span class="en">Stagio runs entirely on your computer: no account, no cloud, no analytics or tracking, and it doesn't check for updates by itself. Nothing about your events leaves the computer unless you send it yourself.</span></p>
+    <p class="lead"><span class="zh">Stagio 完全在你的电脑上运行：不需要账号，不上云端，没有统计或追踪；除非你自己打开“有新版本时告诉我”，否则不会检查更新。除非你自己把文件发出去，关于你的活动的任何资料都不会离开这台电脑。</span><span class="en">Stagio runs entirely on your computer: no account, no cloud, no analytics or tracking, and it checks for updates only if you turn that on. Nothing about your events leaves the computer unless you send it yourself.</span></p>
 
     <h2><span class="zh">留在电脑上的资料</span><span class="en">What Stagio keeps on your computer</span></h2>
     <div class="seg" role="group" aria-label="Windows / Mac"><button type="button" data-set-os="win" aria-pressed="true">Windows</button><button type="button" data-set-os="mac" aria-pressed="false">Mac</button></div>
@@ -54,7 +54,7 @@
 
     <h2><span class="zh">会连到互联网的</span><span class="en">What reaches the internet</span></h2>
     <ul>
-      <li><span class="zh"><b>Stagio 程序本身：不会。</b>它不连任何网上服务。</span><span class="en"><b>The Stagio app: nothing.</b> It talks to no online service.</span></li>
+      <li><span class="zh"><b>Stagio 程序本身：不会</b>，它不连任何网上服务。唯一的例外是你在 Settings → About 自己打开 <b>Tell me when a new version is out</b>（默认关闭）：之后它每天一次，从 GitHub 上的下载发布页读取一个很小的文件 versions.json（只有版本号）。除了这个请求本身，不送出任何东西；GitHub 会看到这台电脑的互联网地址，和浏览任何网站一样。它从不自己安装任何东西。</span><span class="en"><b>The Stagio app: nothing</b>; it talks to no online service. The one exception is if you turn on <b>Tell me when a new version is out</b> in Settings → About (off by default): then, once a day, it reads one small file, versions.json (version numbers only), from the download release on GitHub. Nothing is sent but the request itself; GitHub sees this computer's internet address, as with any website. It never installs anything by itself.</span></li>
       <li><span class="zh">蓝牙遥控的网页，第一次是手机从 GitHub Pages 打开的，之后可以离线使用。</span><span class="en">The Bluetooth remote page is opened by the phone from GitHub Pages the first time; after that it works offline.</span></li>
       <li><span class="zh">这个网站、使用说明和下载文件由 GitHub 提供，GitHub 可能保存访问记录（见 <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub 的隐私声明</a>）。这个网站本身不用 Cookie，也没有统计；它只在你的浏览器里记住你选的语言和 Windows / Mac。</span><span class="en">This site, the guide and the downloads are served by GitHub, which may keep access logs (see <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>). The site itself sets no cookies and has no analytics; it only remembers your language and Windows / Mac choice in your browser.</span></li>
     </ul>

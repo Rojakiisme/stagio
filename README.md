@@ -83,6 +83,8 @@ A fix raises the last number, a new feature the middle one.
   the speaker a message ("5 minutes left") and sees when it was read.
 - **Try with sample slides**: on the empty console, two sample presentations that come with Stagio
   (Extra also gets a sample run of show), to try everything without your own slides.
+- **New versions** (opt-in): Settings → About → "Tell me when a new version is out" reads the
+  version numbers from the download release once a day; off by default, nothing else is sent.
 - **Problem reports**: Settings → About → Save diagnostics (the PIN, keys and user name are taken
   out); bug and idea forms on GitHub. Changes per release: [CHANGELOG.md](CHANGELOG.md).
 - **Phone remote**: a web page, nothing to install. Scan the QR code (it works for 10 minutes) or

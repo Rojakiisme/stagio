@@ -19,6 +19,7 @@ const { Devices, deviceName } = require('./lib/devices');
 const { StepGuard } = require('./lib/stepguard');
 const diagnostics = require('./lib/diagnostics');
 const { LoginGuard } = require('./lib/loginguard');
+const { Updates } = require('./lib/updates');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
 const edition = require('./lib/edition').current();
@@ -26,6 +27,11 @@ const ed = edition.features;
 
 const cfg = config.load();
 const saveCfg = () => config.save(cfg);
+// "Tell me when a new version is out": off unless turned on in Settings → About (lib/updates.js).
+const updates = new Updates({
+  cfg, save: saveCfg, edition, platform: process.platform === 'darwin' ? 'mac' : 'windows',
+  onChange: () => broadcastSoon(),
+});
 
 const { ppt, program, localMusic, output } = platform;
 // Lite has no music: nothing is polled or controlled, whatever the shared settings say.
@@ -431,6 +437,7 @@ function buildParts() {
     run: runOfShow ? runOfShow.summary() : null,
     countdown: countdown ? countdown.summary() : null,
     stage: ed.stage ? { screens: stageClients.size, message: stageMsg, presets: cfg.stagePresets, canFlip: !!cfg.stageCanFlip } : null,
+    update: updates.summary(),
     remotes: remoteCount(),
     // Backup connections (no password or key here: the state also goes to phones).
     links: {
@@ -499,7 +506,11 @@ setInterval(() => {
 
 app.get('/api/state', (req, res) => res.json(fullState()));
 
-// Diagnostics for testing: helper queues/restarts, scan time, memory, live clients.
+// "Tell me when a new version is out" (Settings → About): off unless turned on here, on this PC
+// (lib/updates.js). When on, Stagio fetches versions.json from the download release once a day.
+app.post('/api/update', onlyHere, (req, res) => { updates.setOn(req.body?.on === true); res.json({ ok: true, data: updates.summary() }); });
+app.post('/api/update/check', onlyHere, async (req, res) => res.json({ ok: true, data: await updates.check() }));
+
 // "Save diagnostics" (Settings → About): a text file for a problem report, this PC only, with the
 // PIN, keys, codes, the Wi-Fi password and the user's folder name taken out (lib/diagnostics.js).
 app.get('/api/diagnostics', onlyHere, (req, res) => {
@@ -536,6 +547,7 @@ app.get('/api/diagnostics', onlyHere, (req, res) => {
   res.send(text);
 });
 
+// Diagnostics for testing: helper queues/restarts, scan time, memory, live clients.
 app.get('/api/debug', (req, res) => {
   const h = (x) => ({ pid: x.proc?.pid || null, pending: x.pending.size, restarts: x.restarts, recycles: x.recycles, calls: x.calls });
   res.json({
@@ -1509,7 +1521,7 @@ ready.catch((e) => console.error(`Could not start on port ${cfg.port}: ${e.messa
 process.on('uncaughtException', (e) => console.error('[uncaught]', e));
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
-const stop = () => { platform.stop(); mixerHelper?.stop(); };
+const stop = () => { platform.stop(); mixerHelper?.stop(); updates.stop(); };
 /** Before the desktop app quits: apps sent to the headphones go back to the default output. */
 const beforeQuit = () => Promise.all([preview ? preview.shutdown() : null, mixer ? mixer.shutdown() : null]);
 /** For the desktop app: is anything depending on Stagio right now? */

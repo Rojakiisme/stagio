@@ -39,6 +39,9 @@ phones on the same network can be remotes. What protects it:
 - **Stored data**: settings, PIN and keys are kept in the user's own profile
   (`%APPDATA%\OneDesk\config.json`) and never leave the computer. Stagio signs in to no online
   service.
+- **Update notice** (Settings → About, off by default): when turned on, Stagio fetches
+  `versions.json` from this repository's `downloads` release once a day. Nothing else is sent, and
+  nothing is downloaded or installed by itself. Only the computer itself can turn it on.
 
 ## Known limits
 

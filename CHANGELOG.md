@@ -4,6 +4,14 @@ What changed in each release, newest first. Each edition has its own version num
 Standard, Extra; Windows and Mac). The download page always has the newest of each:
 https://rojakiisme.github.io/stagio/
 
+## 2026-11-24 · Windows Lite 1.6 · Standard 1.7 · Extra 1.8 · Mac 1.6 · 1.6 · 1.7
+
+- **New versions** (opt-in): Settings → About → "Tell me when a new version is out". Off by
+  default. When on, once a day (and on "Check now") Stagio reads versions.json, the version numbers,
+  from the download release, and says so in About, with one short notice, when a newer one is out.
+  Nothing else is sent; nothing is downloaded or installed by itself; only the Stagio computer can
+  turn it on.
+
 ## 2026-11-24 · Windows Lite 1.5.1 · Standard 1.6.1 · Extra 1.7.1 · Mac 1.5.1 · 1.5.1 · 1.6.1
 
 - Wrong PINs are now also limited across the whole network: more than 30 within a minute, from any

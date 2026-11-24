@@ -885,6 +885,9 @@ async function serverChecks() {
     check('the Remote window lists them by kind of device (no keys in the list)', !!d1 && list.data.some((d) => d.name === 'iPad · Safari') && !JSON.stringify(list).includes(k1));
     const fromLan = await fetch(`${lan}/api/devices`, { headers: { 'X-Stagio-Key': k1 } }).then((r) => r.status).catch(() => 0);
     check('the device list is only for the Stagio PC', fromLan === 403, `status ${fromLan}`);
+    const upd = (await get('/api/state').then((r) => r.json())).update;
+    const updFromLan = await fetch(`${lan}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k1 }, body: JSON.stringify({ on: true }) }).then((r) => r.status).catch(() => 0);
+    check('the update notice is off unless turned on, and only the Stagio PC can turn it on', upd?.on === false && !upd.latest && updFromLan === 403, `status ${updFromLan}`);
     const cfgFile = SERVER_DATA && path.join(SERVER_DATA, 'config.json');
     const cfgText = cfgFile && fs.existsSync(cfgFile) ? fs.readFileSync(cfgFile, 'utf8') : null;
     if (cfgText !== null) check('config.json keeps only a hash of each device key', !cfgText.includes(k1) && !cfgText.includes(k2));
@@ -941,6 +944,33 @@ async function cueChecks() {
   await sleep(400);
   check('a background fade that fails after the cue has finished is still reported', late.length === 1 && /Fade out: .*player gone/.test(late[0]) && !cr.isRunning('f'), late.join(' | '));
   check('Stop with nothing running does nothing', cr.stop() === 0);
+}
+
+// ---------------------------------------------------------------- "tell me when a new version is out"
+async function updateChecks() {
+  const { Updates, newer, VERSIONS_URL } = require('../lib/updates');
+  check('versions compare by number', newer('1.7.2-beta', '1.7.1-beta') && newer('2.0.0', '1.9.9-beta') && !newer('1.7.1-beta', '1.7.1-beta') && !newer('1.6.9', '1.7.0') && !newer('x', '1.0.0'));
+  const calls = [];
+  let answer = { extra: { windows: '1.8.0-beta', mac: '1.7.0-beta' } };
+  const fetch = async (url, opts) => { calls.push({ url, opts }); return { ok: true, json: async () => answer }; };
+  const u = new Updates({ cfg: {}, save: () => {}, edition: { id: 'extra', version: '1.7.1-beta' }, platform: 'windows', fetch });
+  await u.check();
+  check('update notice: off by default, and then no request at all', calls.length === 0 && u.summary().on === false && u.summary().latest === null);
+  u.setOn(true);
+  u.stop(); // (the first check it schedules; checked by hand here)
+  const s1 = await u.check();
+  check('update notice: when on, one plain request for versions.json, nothing sent with it',
+    calls.length === 1 && calls[0].url === VERSIONS_URL && !/[?#]/.test(calls[0].url) && !calls[0].opts.body && !calls[0].opts.headers);
+  check('update notice: a newer version of this edition, on this system, is shown', s1.latest === '1.8.0-beta' && s1.label === 'Beta 1.8');
+  answer = { extra: { windows: '1.7.1-beta' } };
+  check('update notice: the same version shows nothing', (await u.check()).latest === null);
+  const off = new Updates({ cfg: { updateCheck: true }, save: () => {}, edition: { id: 'extra', version: '1.7.1-beta' }, platform: 'mac', fetch: async () => { throw new Error('offline'); } });
+  off.stop();
+  const s3 = await off.check();
+  check('update notice: without internet it says so, and nothing breaks', s3.error === 'offline' && s3.latest === null);
+  u.setOn(false);
+  u.stop();
+  check('update notice: turned off, nothing is left on screen', u.summary().on === false && u.summary().latest === null);
 }
 
 // ---------------------------------------------------------------- diagnostics
@@ -1055,6 +1085,7 @@ function deviceChecks() {
     editionChecks();
     deviceChecks();
     diagnosticsChecks();
+    await updateChecks();
     await cueChecks();
     await runChecks();
     if (process.argv.includes('--server')) await serverChecks();

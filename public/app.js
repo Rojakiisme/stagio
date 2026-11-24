@@ -264,6 +264,7 @@ function applyState(patch) {
   if (has('cueAuto')) announceAutoCue(S.cueAuto, full);
   if (has('cueLate')) announceCueLate(S.cueLate, full);
   if (has('pinAlert')) announcePinAlert(S.pinAlert, full);
+  if (has('update')) renderUpdate();
   if (has('timer', 'ppt')) renderTimers();
   if (has('run', 'cues', 'recent', 'ppt', 'edition', 'displays')) renderRun();
   if (has('stage', 'edition')) renderStage();
@@ -2331,9 +2332,34 @@ const openSettings = (pane) => {
   applyDeviceSettings();
   $('#macCheckBox').classList.toggle('hidden', !(isPC && S?.platform?.macCheck));
   $('#diagBox').classList.toggle('hidden', !isPC);
+  $('#updBox').classList.toggle('hidden', !isPC);
+  renderUpdate();
   if (!$('#dlgSettings').open) $('#dlgSettings').showModal();
   showPane(typeof pane === 'string' ? pane : pref.get('settingsPane') || (isPC ? 'layout' : 'screen'));
 };
+// "Tell me when a new version is out" (this PC only; off unless turned on).
+function renderUpdate() {
+  const u = S?.update;
+  if (!u || !isPC) return;
+  $('#updOn').checked = !!u.on;
+  $('#btnUpdCheck').classList.toggle('hidden', !u.on);
+  $('#btnUpdCheck').disabled = !!u.checking;
+  const at = u.checkedAt ? new Date(u.checkedAt - clockOffset).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const st = $('#updStatus');
+  if (!u.on) st.textContent = '';
+  else if (u.checking) st.textContent = 'Checking…';
+  else if (u.latest) st.innerHTML = `<b>${esc(u.label)}</b> is out (this is ${esc(S.edition?.label || '')}). <a href="${esc(u.url)}" target="_blank" rel="noopener">Download page</a>`;
+  else if (u.error) st.textContent = `Could not check${at ? ` (${at})` : ''}: ${u.error}.`;
+  else st.textContent = at ? `Checked ${at}: this is the newest version.` : 'Not checked yet.';
+  // once per new version, on this PC: a short notice
+  if (u.latest && pref.get('updSeen') !== u.latest) {
+    pref.set('updSeen', u.latest);
+    toast(`${S.edition?.name || 'Stagio'} ${u.label} is out. Settings → About has the link.`, 'info');
+  }
+}
+$('#updOn').addEventListener('change', (e) => post('/api/update', { on: e.target.checked }));
+$('#btnUpdCheck').onclick = () => post('/api/update/check', {}, 30000);
+
 // Diagnostics for a problem report (this PC only): saved as a text file.
 $('#btnDiag').onclick = async (e) => {
   const b = e.currentTarget;

@@ -179,6 +179,8 @@ GitHub 打出来的文件叫 `Stagio-Extra-1.0.0-beta-mac-<arm64|x64>.dmg` 这�
 
 手边没有投影片时，在空白的主控台上按 **Try with sample slides**：Stagio 会打开自带的两份示范投影片（复制到资料夹的 demo 子文件夹里），Extra 还会建好一个示范节目流程“Sample event”，可以从头到尾试一遍。
 
+**新版本提示**（默认关闭）：Settings → About 打开 “Tell me when a new version is out” 后，Stagio 每天一次从下载发布页读取版本号，有新版本时在 About 里显示并提示一次。除了这个请求，不送出任何东西，也不会自己下载或安装。
+
 **回报问题**：在 Stagio 电脑上，Settings → About → **Save diagnostics** 会存下一个文本文件（版本、系统、helper 状态、日志的最后部分；PIN、钥匙、配对码、Wi-Fi 密码和用户名都已去掉），附在 GitHub 的问题回报里。每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 开场前检查（Check）
