@@ -28,7 +28,7 @@
 | **Windows 电脑**（接投影机、运行 PowerPoint 的那台） | 主控端 | 从下载页面选一个版本下载，或执行 `dist\Stagio-<版本>-Setup-<版本号>.exe`（例如 `Stagio-Extra-Setup-1.0.0-beta.exe`）安装，桌面和开始菜单会有它的图标。不需要另外安装 Node.js |
 | **手机 / 平板**（iPhone、Android） | 遥控端 | 在主控台点 **Remote**，用手机扫码打开，再“加到主屏幕”（步骤写在 Remote 对话框里），之后从图标打开。iPhone 会全屏显示；Android 因为连线是 HTTP，可能仍带浏览器地址栏 |
 | **Mac** | 遥控端 | 用 Safari 打开 Remote 显示的网址，再选“文件 → 添加到程序坞” |
-| **Mac**（直接控制 Mac 版 PowerPoint） | 主控端，**测试版** | 从下载页面选一个版本下载（Apple 芯片 / Intel），见下方“Mac 测试版” |
+| **Mac**（直接控制 Mac 版 PowerPoint，macOS 13 以上） | 主控端，**测试版** | 从下载页面选一个版本下载（Apple 芯片 / Intel），见下方“Mac 测试版” |
 
 需要：Windows 10/11、PowerPoint（Office 2016 / 365）。放音乐用你平常用的播放程序就可以（音乐 App、媒体播放器或浏览器）。
 

@@ -1008,6 +1008,21 @@ function deviceChecks() {
     && deviceName('Mozilla/5.0 (Linux; Android 15; SM-S921B) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36') === 'Android phone · Chrome');
   check('"last used" is saved now and then, not on every request', (() => { const n = saves; const d = dev.add('x'); for (let i = 0; i < 50; i++) dev.check(d.key); return saves - n === 1; })());
 
+  // Wrong PINs: per address, and across the whole network for PINs (not for pairing codes).
+  const { LoginGuard } = require('../lib/loginguard');
+  let lt = 0;
+  const lg = new LoginGuard({ now: () => lt });
+  for (let i = 0; i < 8; i++) lg.failed('10.0.0.1', { pin: true });
+  check('PIN: 8 wrong from one address lock that address out', lg.blocked('10.0.0.1', { pin: true }) === 'address' && lg.blocked('10.0.0.2', { pin: true }) === null);
+  let tripped = 0;
+  for (let i = 0; i < 22; i++) if (lg.failed(`10.0.1.${i}`, { pin: true })) tripped++;
+  check('PIN: 30 wrong within a minute from many addresses refuse every PIN, and the console is told once', lg.blocked('10.0.9.9', { pin: true }) === 'network' && tripped === 1);
+  check('PIN: meanwhile the QR code (pairing) still works for others', lg.blocked('10.0.9.9', { pin: false }) === null);
+  lt += 61000;
+  check('PIN: a minute later PINs are taken again', lg.blocked('10.0.9.9', { pin: true }) === null);
+  lg.ok('10.0.0.1');
+  check('PIN: a right PIN lets that address start over', lg.blocked('10.0.0.1', { pin: true }) === null);
+
   // The same Next from two devices at once is one step; one device's quick double press is two.
   const { StepGuard } = require('../lib/stepguard');
   let t = 1000;

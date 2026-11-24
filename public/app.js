@@ -263,6 +263,7 @@ function applyState(patch) {
   if (has('fastCopy', 'ppt')) renderFastCopy(patch.fastCopy && !full ? patch.fastCopy : null);
   if (has('cueAuto')) announceAutoCue(S.cueAuto, full);
   if (has('cueLate')) announceCueLate(S.cueLate, full);
+  if (has('pinAlert')) announcePinAlert(S.pinAlert, full);
   if (has('timer', 'ppt')) renderTimers();
   if (has('run', 'cues', 'recent', 'ppt', 'edition', 'displays')) renderRun();
   if (has('stage', 'edition')) renderStage();
@@ -294,6 +295,14 @@ function applyEdition() {
   // A tab this edition doesn't have (left from another edition on this phone): back to Slides.
   const tab = document.body.dataset.tab;
   if ((tab === 'music' && !edHas('music')) || (tab === 'cues' && !edHas('cues'))) $('.mnav [data-tab="slides"]')?.click();
+}
+
+/** Many wrong PINs on the network just now (someone guessing): said on the Stagio PC. */
+let pinAlertSeen = null;
+function announcePinAlert(a, quiet) {
+  if (!a || a.at === pinAlertSeen) return;
+  pinAlertSeen = a.at;
+  if (!quiet && isPC) toast('Many wrong PINs were tried on this network in the last minute, so PINs are refused for a minute (the QR code still works). If that wasn\'t your team: Remote → New PIN and keys.');
 }
 
 /** A fade a cue started in the background failed after the cue had finished. */
@@ -1173,11 +1182,13 @@ $('#cdStop').addEventListener('click', () => post('/api/countdown', { stop: true
 // PowerPoint) or the system volume; the microphone goes through Stagio (lib/mixer.js).
 
 let meters = null; // { mic: [in, out], voice, master, music, slides }, pushed a few times a second
+// The same levels as elsewhere, not extra ones: Music is the music app's own level (LEVEL in the
+// Music panel, which fades move), Master the system volume (everything this PC plays, the mic too).
 const MX_ROWS = [
-  { id: 'mic', name: 'Mic' },
-  { id: 'music', name: 'Music', needs: 'music' },
-  { id: 'slides', name: 'Slides', tip: 'Videos and sounds in the slides (PowerPoint)' },
-  { id: 'master', name: 'Master', tip: 'The system volume' },
+  { id: 'mic', name: 'Mic', tip: 'The microphone, through Stagio to the speakers' },
+  { id: 'music', name: 'Music', needs: 'music', tip: 'The music app\'s own level: the same as LEVEL in the Music panel (fades move it)' },
+  { id: 'slides', name: 'Slides', tip: 'PowerPoint\'s own level: videos and sounds in the slides' },
+  { id: 'master', name: 'Master', tip: 'The system volume: everything this PC plays, the microphone too (the System slider while the mixer is off)' },
 ];
 function mxBuildRows() {
   const pro = !!S.mixer?.pro;
@@ -1203,6 +1214,9 @@ function mxSetFader(id, value, enabled = true) {
 function renderMixer() {
   const mx = S.mixer;
   $('#mixerGroup').classList.toggle('hidden', !mx);
+  // one control per level: with the mixer on, the system volume is its Master fader
+  $('#sysVolBox').classList.toggle('hidden', !!mx?.on);
+  $('#sysVolMixer').classList.toggle('hidden', !mx?.on);
   if (!mx) return;
   $$('#mxMode button').forEach((b) => b.classList.toggle('on', (b.dataset.mxOn === '1') === !!mx.on));
   $('#mxOff').classList.toggle('hidden', !!mx.on);

@@ -4,6 +4,19 @@ What changed in each release, newest first. Each edition has its own version num
 Standard, Extra; Windows and Mac). The download page always has the newest of each:
 https://rojakiisme.github.io/stagio/
 
+## 2026-11-24 · Windows Lite 1.5.1 · Standard 1.6.1 · Extra 1.7.1 · Mac 1.5.1 · 1.5.1 · 1.6.1
+
+- Wrong PINs are now also limited across the whole network: more than 30 within a minute, from any
+  number of addresses, and PINs are refused for a minute (the QR code still works). The Stagio
+  computer says so, and suggests New PIN and keys. A locked-out address no longer has its pairing
+  code checked at all.
+- With the mixer on, the system volume is shown once, as its Master fader; tooltips say which
+  level each fader is (Music = the music app's own level, Master = the system volume).
+- Privacy page on the site: what stays on the computer, what travels on the network, what reaches
+  the internet (nothing from the app). The Mac version needs macOS 13 or later (now written down).
+- Every installer and disk image has a build provenance attestation signed by GitHub
+  (`gh attestation verify <file> --repo Rojakiisme/stagio`).
+
 ## 2026-11-23 · Windows Lite 1.5 · Standard 1.6 · Extra 1.7 · Mac 1.5 · 1.5 · 1.6
 
 - **Try with sample slides**: on the empty console, opens two sample presentations that come with

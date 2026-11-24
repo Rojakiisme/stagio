@@ -165,7 +165,7 @@
           <button class="btn icon" id="btnNextTrack" title="Next track (N)"></button>
         </div>
 
-        <label class="fader">
+        <label class="fader" title="The music app's own level (the mixer's Music fader is the same one); fades move it">
           <span class="label" id="musicVolLabel">Level</span>
           <input type="range" min="0" max="100" id="musicVol">
           <output class="mono" id="musicVolOut">–</output>
@@ -226,12 +226,16 @@
         <div class="list" id="audioDevices"></div>
       </div>
       <div class="needs-volume">
-        <label class="fader">
-          <span class="label">System</span>
-          <input type="range" min="0" max="100" id="sysVol">
-          <output class="mono" id="sysVolOut">–</output>
-        </label>
-        <button class="btn wide" id="btnMute">Mute</button>
+        <!-- While the mixer is on, its Master fader is this same volume: shown once, there -->
+        <div id="sysVolBox">
+          <label class="fader" title="The volume of everything this PC plays">
+            <span class="label">System</span>
+            <input type="range" min="0" max="100" id="sysVol">
+            <output class="mono" id="sysVolOut">–</output>
+          </label>
+          <button class="btn wide" id="btnMute">Mute</button>
+        </div>
+        <p class="hint hidden" id="sysVolMixer">The system volume is the mixer's <b>Master</b> fader while the mixer is on.</p>
 
         <p class="hint" id="audioSwitchHint"></p>
       </div>

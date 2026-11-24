@@ -55,3 +55,6 @@ phones on the same network can be remotes. What protects it:
 - The Windows installers are not code-signed yet (see [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md));
   the Mac version is not signed by Apple. Download only from this repository's releases or the
   official download page, and compare the SHA-256 shown in the release notes.
+- Every installer and disk image has a **build provenance attestation**, signed by GitHub, that
+  ties it to this repository's workflow and commit. Check one with
+  `gh attestation verify <file> --repo Rojakiisme/stagio`.

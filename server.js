@@ -18,6 +18,7 @@ const { Helper } = require('./lib/helper');
 const { Devices, deviceName } = require('./lib/devices');
 const { StepGuard } = require('./lib/stepguard');
 const diagnostics = require('./lib/diagnostics');
+const { LoginGuard } = require('./lib/loginguard');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
 const edition = require('./lib/edition').current();
@@ -230,22 +231,28 @@ function identify(req) {
 }
 const keyCookie = (key) => `od_key=${encodeURIComponent(key)}; Path=/; Max-Age=31536000; SameSite=Lax`;
 
-const loginFails = new Map(); // ip -> { n, until }
-/** Wrong PINs and pairing codes: 8 from one address lock it out for 5 minutes. */
-function guard(req, res, ok, what) {
-  const ip = req.socket.remoteAddress;
-  const f = loginFails.get(ip) || { n: 0, until: 0 };
-  if (Date.now() < f.until) { res.status(429).json({ ok: false, error: 'Too many wrong tries. Try again in a few minutes.' }); return false; }
-  if (!ok) {
-    f.n++;
-    if (f.n >= 8) { f.n = 0; f.until = Date.now() + 5 * 60000; }
-    if (loginFails.size > 1000) loginFails.clear(); // many addresses: start the count over
-    loginFails.set(ip, f);
-    res.status(401).json({ ok: false, error: what });
-    return false;
-  }
-  loginFails.delete(ip);
+// Wrong PINs and codes (lib/loginguard.js): per address, and for PINs across the whole network.
+const logins = new LoginGuard();
+let pinAlert = null; // { at }: many wrong PINs on the network just now (the consoles say so)
+/** Refuses a try before it is checked: a locked-out address, or any PIN while many wrong ones arrive. */
+function refused(req, res, pin) {
+  const why = logins.blocked(req.socket.remoteAddress, { pin });
+  if (!why) return false;
+  res.status(429).json({
+    ok: false,
+    error: why === 'network'
+      ? 'Too many wrong PINs on this network just now. Scan the code on the Stagio PC instead, or try again in a minute.'
+      : 'Too many wrong tries. Try again in a few minutes.',
+  });
   return true;
+}
+function wrong(req, res, what, pin) {
+  if (logins.failed(req.socket.remoteAddress, { pin })) {
+    pinAlert = { at: Date.now() };
+    console.warn('Many wrong PINs on the network in the last minute: PINs are refused for a minute');
+    broadcastSoon();
+  }
+  res.status(401).json({ ok: false, error: what });
 }
 const pinOk = (req, expected) => String(req.body?.pin || '').trim() === expected;
 /** Signs a new device in: its own key, also as a cookie. */
@@ -255,19 +262,25 @@ function signIn(res, added) {
   broadcast();
 }
 app.post('/api/login', (req, res) => {
-  if (!guard(req, res, pinOk(req, cfg.pin), 'Wrong PIN')) return;
+  if (refused(req, res, true)) return;
+  if (!pinOk(req, cfg.pin)) return wrong(req, res, 'Wrong PIN', true);
+  logins.ok(req.socket.remoteAddress);
   signIn(res, devices.add(deviceName(req.get('user-agent'))));
 });
 // The QR code in the Remote window: ?pair=<code>, swapped here for the phone's own key.
 app.post('/api/pair', (req, res) => {
+  if (refused(req, res, false)) return;
   const added = devices.pairWith(String(req.body?.code || '').trim(), deviceName(req.get('user-agent')));
-  if (!guard(req, res, !!added, 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.')) return;
+  if (!added) return wrong(req, res, 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.', false);
+  logins.ok(req.socket.remoteAddress);
   signIn(res, added);
 });
 // Stage display (Extra): its own PIN gives its own key, which only reaches the stage display.
 app.post('/api/stage/login', (req, res) => {
   if (!ed.stage) return res.status(403).json({ ok: false, error: `The stage display is not part of ${edition.name}` });
-  if (!guard(req, res, pinOk(req, cfg.stagePin), 'Wrong PIN')) return;
+  if (refused(req, res, true)) return;
+  if (!pinOk(req, cfg.stagePin)) return wrong(req, res, 'Wrong PIN', true);
+  logins.ok(req.socket.remoteAddress);
   res.json({ ok: true, data: { key: cfg.stageKey } });
 });
 
@@ -377,7 +390,7 @@ app.post('/api/devices/remove', onlyHere, (req, res) => {
 });
 app.post('/api/remote/reset', onlyHere, (req, res) => {
   devices.reset();
-  loginFails.clear();
+  logins.clear();
   for (const c of [...clients]) if (c.remote) c.end();
   for (const c of [...stageClients]) c.end();
   broadcast();
@@ -410,6 +423,7 @@ function buildParts() {
     cueRunning: cues.running,
     cueAuto: autoCues.last,
     cueLate,
+    pinAlert,
     settings: { hidePresenterView: cfg.hidePresenterView, autoCues: cfg.autoCues, cueShift: cfg.cueShift },
     recent: cfg.recent.map((r) => (recentGone.has(r.path) ? { ...r, missing: true } : r)),
     fastCopy: fastCopyState(),

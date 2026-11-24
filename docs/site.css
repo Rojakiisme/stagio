@@ -300,3 +300,18 @@ html.searching .g-body > section:not(.nomatch) ~ section:not(.nomatch) { border-
   .guide figure.phone { max-width: 260px; }
   .pin { min-width: 20px; height: 20px; font-size: 11px; box-shadow: 0 0 0 2px rgba(11, 12, 13, .85); }
 }
+
+/* ---------- text pages (privacy) ---------- */
+.prose { max-width: 820px; padding-top: 40px; padding-bottom: 56px; }
+.prose h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; margin: 0 0 14px; color: var(--bright); letter-spacing: -.015em; }
+.prose h2 { font-size: 19px; margin: 34px 0 10px; color: var(--bright); }
+.prose .lead { font-size: 17px; margin: 0 0 8px; }
+.prose p, .prose ul { margin: 0 0 12px; }
+.prose ul { padding-left: 22px; }
+.prose li { margin-bottom: 8px; }
+.prose .table-wrap { margin: 6px 0 10px; }
+.prose table.plain { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+.prose table.plain th, .prose table.plain td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+.prose table.plain th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); border-bottom-color: var(--line-hi); }
+.prose table.plain td:first-child { color: var(--bright); white-space: nowrap; }
+.prose table.plain code { word-break: normal; white-space: nowrap; }

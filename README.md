@@ -105,7 +105,7 @@ below).
 | --- | --- | --- |
 | Windows 10/11 PC with PowerPoint (Office 2016 / 365) | the desk | download an installer from the [download page](https://rojakiisme.github.io/stagio/). Per user, no administrator rights. Any music player for music |
 | iPhone, Android phone, tablet | remote, stage display | in Stagio click **Remote** and scan the QR code |
-| Mac with PowerPoint for Mac | the desk, **test version** | download the Apple silicon or Intel .dmg |
+| Mac with PowerPoint for Mac (macOS 13 or later) | the desk, **test version** | download the Apple silicon or Intel .dmg |
 
 **Windows "protected your PC" warning**: the installers are not code-signed. Click
 *More info → Run anyway*. They are built on GitHub from this repository's source (see the Windows
