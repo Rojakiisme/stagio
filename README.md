@@ -195,7 +195,7 @@ test/                   checks, stress test
 ```
 
 Settings live in `data/` when running from source. Never commit that folder: it holds the PIN and
-the access keys.
+the devices' signing keys.
 
 ## Known limits
 
@@ -204,7 +204,8 @@ the access keys.
 - Some settings (which screen the show uses, hiding the presenter view, the countdown on a real
   projector, the Mac version with real PowerPoint) have not been tested with every setup yet.
   Try them before an event.
-- Phones talk to the computer over plain HTTP on the local network (see [SECURITY.md](SECURITY.md)).
+- Phones talk to the computer over plain HTTP on the local network. Every request is signed and the
+  keys never travel, but what the phones are shown is not encrypted (see [SECURITY.md](SECURITY.md)).
 
 ## License
 

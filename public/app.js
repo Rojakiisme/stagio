@@ -6,26 +6,41 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor((ms || 0) / 1000)); retur
 const isPC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 
 // ---------------- remote sign-in ----------------
-// Each phone gets a key of its own: from the QR code (?pair=..., a code that works for 10 minutes,
-// swapped for the key at once) or by entering the PIN. The key is kept in this browser and sent
-// with every request, so it works even where cookies are blocked. (?key=... is the link from
-// before: it still works until the phones paired before are removed in the Remote window.)
+// Each phone gets a key of its own: from the QR code (#pair=..., a code that works for 10 minutes)
+// or by entering the PIN. The key itself never travels: phone and PC both work it out, and every
+// request is signed with it (sign.js, lib/sign.js). It is kept in this browser.
 const store = {
-  get() { try { return localStorage.getItem('onedesk.key'); } catch { return null; } },
-  set(v) { try { localStorage.setItem('onedesk.key', v); } catch { /* private mode: the cookie still works */ } },
-  clear() { try { localStorage.removeItem('onedesk.key'); } catch { /* ignore */ } },
+  get() { try { return localStorage.getItem('stagio.sig'); } catch { return null; } },
+  set(v) { try { localStorage.setItem('stagio.sig', v); localStorage.removeItem('onedesk.key'); } catch { /* private mode: kept until the page closes */ } },
+  clear() { try { localStorage.removeItem('stagio.sig'); localStorage.removeItem('onedesk.key'); } catch { /* ignore */ } },
+  // A phone paired before signing kept its key here (and a link carried it as ?key=).
+  old() { try { return localStorage.getItem('onedesk.key'); } catch { return null; } },
 };
-const PAIR_CODE = isPC ? null : new URLSearchParams(location.search).get('pair');
-(() => {
+const fromAddress = (() => {
   const q = new URLSearchParams(location.search);
-  const k = q.get('key');
-  if (k) store.set(k);
-  if (k || q.get('pair')) history.replaceState(null, '', location.pathname); // the code is not left in the address bar
+  const h = new URLSearchParams(location.hash.slice(1));
+  const r = { pair: h.get('pair') || q.get('pair'), key: q.get('key') };
+  if (r.pair || r.key || location.hash) history.replaceState(null, '', location.pathname); // nothing is left in the address bar
+  return r;
 })();
-let KEY = isPC ? null : (new URLSearchParams(location.search).get('key') || store.get());
-/** Adds the access key to URLs the browser loads by itself (images, live stream). */
-const authUrl = (u) => (KEY && u && u.startsWith('/') ? `${u}${u.includes('?') ? '&' : '?'}key=${encodeURIComponent(KEY)}` : u);
-const authHeaders = () => (KEY ? { 'X-Stagio-Key': KEY } : {});
+const PAIR_CODE = isPC ? null : fromAddress.pair;
+let KEY = null;   // this device's signing key (base64url)
+let SIGNER = null;
+function useKey(k) {
+  KEY = k || null;
+  SIGNER = KEY ? StagioSign.signer(KEY, () => Date.now() + clockOffset) : null;
+}
+if (!isPC) {
+  const old = fromAddress.key || store.old();
+  if (store.get()) useKey(store.get());
+  else if (old) { useKey(StagioSign.keyFromOld(old)); store.set(KEY); }
+}
+/** Signs URLs the browser loads by itself (pictures, the live stream). */
+const authUrl = (u) => (SIGNER ? SIGNER.url(u) : u);
+/** Signed headers for one request. */
+const authHeaders = (method, url, body) => (SIGNER ? SIGNER.headers(method, url, body) : {});
+/** The PC's clock, from an answer that carries it: signing uses it (a phone's clock may be off). */
+function setClock(pcNow, t0) { if (pcNow) clockOffset = pcNow - (t0 + Date.now()) / 2; }
 
 let S = null;          // latest server state
 let stepTypes = {};
@@ -62,19 +77,29 @@ const VERY_SLOW = 300000; // a cue may contain waits
 
 async function api(path, body, method, timeoutMs) {
   const hasBody = body !== undefined;
+  const m = method || (hasBody ? 'POST' : 'GET');
+  const text = hasBody ? JSON.stringify(body) : undefined;
   let res;
-  try {
-    res = await fetchT(path, {
-      method: method || (hasBody ? 'POST' : 'GET'),
-      headers: { ...authHeaders(), ...(hasBody ? { 'Content-Type': 'application/json' } : {}) },
-      body: hasBody ? JSON.stringify(body) : undefined,
-    }, timeoutMs);
-  } catch (e) {
-    // The command did not get through: say so, instead of leaving the operator guessing.
-    const msg = e.name === 'AbortError' ? 'Stagio did not answer in time' : 'No connection to the Stagio PC';
-    toast(msg);
-    reconnect();
-    throw new Error(msg);
+  for (let attempt = 0; ; attempt++) {
+    const t0 = Date.now();
+    try {
+      res = await fetchT(path, {
+        method: m,
+        headers: { ...authHeaders(m, path, text), ...(hasBody ? { 'Content-Type': 'application/json' } : {}) },
+        body: text,
+      }, timeoutMs);
+    } catch (e) {
+      // The command did not get through: say so, instead of leaving the operator guessing.
+      const msg = e.name === 'AbortError' ? 'Stagio did not answer in time' : 'No connection to the Stagio PC';
+      toast(msg);
+      reconnect();
+      throw new Error(msg);
+    }
+    // Refused because this phone's clock is off (nothing was done): sign again on the PC's time.
+    if (res.status !== 401 || attempt) break;
+    const c = await res.clone().json().catch(() => null);
+    if (!c?.clock) break;
+    setClock(c.clock, t0);
   }
   let j;
   try { j = await res.json(); } catch { j = { ok: false, error: `${res.status} ${res.statusText}` }; }
@@ -137,14 +162,12 @@ async function submitLogin() {
   if (!pin) return;
   $('#btnLogin').disabled = true;
   try {
-    const r = await fetchT('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) }, 10000);
-    const j = await r.json();
-    if (!j.ok) { $('#loginMsg').textContent = j.error || 'Sign-in failed'; return; }
-    KEY = j.data.key;
-    store.set(KEY);
+    const k = await StagioSign.exchange('/api/login', 'login', pin);
+    store.set(k);
+    useKey(k);
     location.reload();
-  } catch {
-    $('#loginMsg').textContent = 'Cannot reach the Stagio PC. Check that it is running and on the same Wi-Fi.';
+  } catch (e) {
+    $('#loginMsg').textContent = e.status || e.notPC ? e.message || 'Sign-in failed' : 'Cannot reach the Stagio PC. Check that it is running and on the same Wi-Fi.';
   } finally {
     $('#btnLogin').disabled = false;
   }
@@ -176,13 +199,12 @@ async function pair() {
   const code = pairing;
   pairing = null; // once: a reload or a reconnect doesn't send it again
   try {
-    const r = await fetchT('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }, 10000);
-    const j = await r.json();
-    if (!j.ok) return j.error || 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.';
-    KEY = j.data.key;
-    store.set(KEY);
+    const k = await StagioSign.exchange('/api/pair', 'pair', code);
+    store.set(k);
+    useKey(k);
     return null;
-  } catch {
+  } catch (e) {
+    if (e.status || e.notPC) return e.message || 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.';
     return 'Cannot reach the Stagio PC. Check that it is running and on the same Wi-Fi.';
   }
 }
@@ -196,15 +218,20 @@ async function start() {
     if (problem) { connecting = false; showLogin(problem); return; }
   }
   try {
-    const t0 = Date.now();
-    const r = await fetchT('/api/ping', { headers: authHeaders() }, 6000);
+    let t0 = Date.now();
+    let r = await fetchT('/api/ping', { headers: authHeaders('GET', '/api/ping') }, 6000);
+    if (r.status === 401) {
+      // This phone's clock is off: sign again on the PC's time.
+      const c = await r.clone().json().catch(() => null);
+      if (c?.clock) { setClock(c.clock, t0); t0 = Date.now(); r = await fetchT('/api/ping', { headers: authHeaders('GET', '/api/ping') }, 6000); }
+    }
     if (r.status === 401) {
       if (es) { es.close(); es = null; }
-      if (KEY) { store.clear(); KEY = null; showLogin('This phone is no longer paired (it was removed, or the PIN and keys were renewed on the Stagio PC). Scan the code again or enter the PIN.'); } else showLogin();
+      if (KEY) { store.clear(); useKey(null); showLogin('This phone is no longer paired (it was removed, or the PIN and keys were renewed on the Stagio PC). Scan the code again or enter the PIN.'); } else showLogin();
       return;
     }
     // The show timer counts on the PC's clock; a phone's own clock may be off by a minute.
-    try { const j = await r.json(); if (j.now) clockOffset = j.now - (t0 + Date.now()) / 2; } catch { /* keep the last offset */ }
+    try { const j = await r.json(); setClock(j.now, t0); } catch { /* keep the last offset */ }
   } catch { /* unreachable right now: connect anyway, the stream keeps retrying */ } finally {
     connecting = false;
   }
@@ -1643,7 +1670,7 @@ function defaultsFor(type) {
 
 $('#btnEditCues').onclick = async () => {
   if (!Object.keys(stepTypes).length) {
-    try { stepTypes = await (await fetchT('/api/cues/types', { headers: authHeaders() }, 10000)).json(); } catch { return toast('No connection to the Stagio PC'); }
+    try { stepTypes = await (await fetchT('/api/cues/types', { headers: authHeaders('GET', '/api/cues/types') }, 10000)).json(); } catch { return toast('No connection to the Stagio PC'); }
   }
   draft = JSON.parse(JSON.stringify(S.cues));
   renderCueEditor();
@@ -1908,7 +1935,12 @@ async function fillRemote(open) {
     $('#ownWifiPass').textContent = own.pass;
     $('#ownWifiUrl').textContent = own.url;
   }
-  if (r.remotePageQr) { $('#btPageQr').innerHTML = r.remotePageQr; $('#btPageUrl').textContent = S?.links?.remotePage || ''; }
+  if (r.remotePageQr) {
+    $('#btPageQr').innerHTML = r.remotePageQr;
+    $('#btPageUrl').textContent = S?.links?.remotePage || '';
+    $('#btPin').textContent = r.pin;
+    if (r.btName) $('#btName').textContent = r.btName;
+  }
   if (r.stage) {
     $('#stageQr').innerHTML = r.stage.qr || '<p class="dim">Connect this PC to a network (or start Stagio Wi-Fi) first.</p>';
     $('#stageUrl').textContent = r.stage.url || '';
@@ -1975,10 +2007,14 @@ function renderLinks() {
   $('#btCard').classList.toggle('hidden', !b);
   if (w) {
     $('#ownWifiTag').className = `tag ${w.on ? 'ok' : w.error ? 'warn' : ''}`;
-    $('#ownWifiTag').textContent = w.busy ? 'Starting…' : w.on ? 'On' : w.error ? 'Failed' : '';
+    $('#ownWifiTag').textContent = w.busy ? 'Starting…' : w.on ? (w.internet ? 'On · with internet' : 'On · no internet') : w.error ? 'Failed' : '';
     $('#ownWifiTag').title = w.error || '';
     $('#btnOwnWifi').textContent = w.on ? 'Stop' : 'Start';
     $('#btnOwnWifi').disabled = !!w.busy;
+    // Why it failed, or why it is Stagio's own network although this PC has internet.
+    const note = !w.on && w.error ? w.error : w.on ? w.note || '' : '';
+    $('#ownWifiNote').textContent = note;
+    $('#ownWifiNote').classList.toggle('hidden', !note);
   }
   if (b) {
     $('#btTag').className = `tag ${b.on ? 'ok' : b.error ? 'warn' : ''}`;
@@ -1987,6 +2023,12 @@ function renderLinks() {
     $('#btnBluetooth').textContent = b.on ? 'Stop' : 'Start';
     $('#btnBluetooth').disabled = !!b.busy;
     $('#btOn').classList.toggle('hidden', !b.on);
+    // Said in the card, not only in the tag's tooltip: why it failed, or a phone shut out.
+    const err = !b.on && b.error ? `Bluetooth did not start: ${b.error}`
+      : b.on && b.locked ? `${b.locked === 1 ? 'A phone' : `${b.locked} phones`} typed a wrong PIN 8 times and ${b.locked === 1 ? 'is' : 'are'} ignored for 5 minutes. Stop and Start Bluetooth to let ${b.locked === 1 ? 'it' : 'them'} in now.`
+        : '';
+    $('#btErr').textContent = err;
+    $('#btErr').classList.toggle('hidden', !err);
   }
 }
 $('#btnOwnWifi').onclick = async () => {

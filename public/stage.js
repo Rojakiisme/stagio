@@ -7,12 +7,28 @@
     set(k, v) { try { if (v) localStorage.setItem(`onedesk.${k}`, v); else localStorage.removeItem(`onedesk.${k}`); } catch { /* private mode */ } },
   };
 
-  // ---- access: the stage key from the QR code (?key=), kept on this device ----
-  const qs = new URLSearchParams(location.search);
-  if (qs.get('key')) { store.set('stageKey', qs.get('key')); history.replaceState(null, '', location.pathname); }
-  let KEY = store.get('stageKey') || '';
-  const withKey = (u) => (KEY ? `${u}${u.includes('?') ? '&' : '?'}key=${encodeURIComponent(KEY)}` : u);
-  const post = (p, body) => fetch(withKey(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  // ---- access: the stage key from the QR code (#key=, or ?key= in codes from before) ----
+  // Requests are signed with its SHA-256 (sign.js, lib/sign.js); the key itself never travels.
+  const fromCode = new URLSearchParams(location.hash.slice(1)).get('key') || new URLSearchParams(location.search).get('key');
+  if (fromCode || location.hash) history.replaceState(null, '', location.pathname);
+  let offset = 0;        // the Stagio computer's clock minus this device's
+  let KEY = '';
+  let SIGNER = null;
+  function useKey(k) {
+    KEY = k || '';
+    SIGNER = KEY ? StagioSign.signer(KEY, () => Date.now() + offset) : null;
+    store.set('stageSig', KEY);
+    store.set('stageKey', ''); // the key itself is not kept
+  }
+  const oldKey = fromCode || store.get('stageKey');
+  useKey(oldKey ? StagioSign.keyFromOld(oldKey) : store.get('stageSig'));
+  /** Pictures and the live stream: a signed link (the browser loads them by itself). */
+  const withKey = (u) => (SIGNER ? SIGNER.url(u) : u);
+  const signed = (method, p, body) => (SIGNER ? SIGNER.headers(method, p, body) : {});
+  const post = (p, body) => {
+    const text = JSON.stringify(body || {});
+    return fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...signed('POST', p, text) }, body: text });
+  };
 
   function showLogin(msg) {
     for (const id of ['#bar', '#stage', '#wait', '#flip', '#msg', '#lost']) $(id).classList.add('hidden');
@@ -23,24 +39,26 @@
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      const r = await fetch('/api/stage/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: $('#pin').value }) });
-      const j = await r.json();
-      if (!j.ok) { $('#loginErr').textContent = j.error || 'Wrong PIN'; return; }
-      KEY = j.data.key; store.set('stageKey', KEY);
+      useKey(await StagioSign.exchange('/api/stage/login', 'stage', $('#pin').value.trim()));
       $('#login').classList.add('hidden');
       connect();
-    } catch { $('#loginErr').textContent = 'No connection to the Stagio computer'; }
+    } catch (e) { $('#loginErr').textContent = e.status || e.notPC ? e.message || 'Wrong PIN' : 'No connection to the Stagio computer'; }
   });
 
   // ---- live state ----
   let S = null;
-  let offset = 0;        // the Stagio computer's clock minus this device's
   let lastMsgAt = 0;
   let es = null;
   async function connect() {
     try {
-      const r = await fetch(withKey('/api/ping'), { cache: 'no-store' });
-      if (r.status === 401 || r.status === 403) { store.set('stageKey', ''); KEY = ''; showLogin(); return; }
+      const t0 = Date.now();
+      let r = await fetch('/api/ping', { cache: 'no-store', headers: signed('GET', '/api/ping') });
+      if (r.status === 401) {
+        // This device's clock is off: sign again on the computer's time.
+        const c = await r.clone().json().catch(() => null);
+        if (c?.clock) { offset = c.clock - (t0 + Date.now()) / 2; r = await fetch('/api/ping', { cache: 'no-store', headers: signed('GET', '/api/ping') }); }
+      }
+      if (r.status === 401 || r.status === 403) { useKey(''); showLogin(); return; }
     } catch { /* not reachable yet: the stream keeps trying */ }
     if (es) es.close();
     es = new EventSource(withKey('/api/stage/events'));

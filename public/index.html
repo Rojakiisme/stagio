@@ -323,16 +323,17 @@
       <summary class="label">No Wi-Fi, or the phone can't reach this PC?</summary>
       <div class="link-card" id="ownWifiCard">
         <div class="link-h"><b>Stagio Wi-Fi</b><span class="dim">iPhone and Android</span><span class="grow"></span><span class="tag" id="ownWifiTag"></span><button class="btn sm" id="btnOwnWifi">Start</button></div>
-        <p class="dim">This PC opens a small Wi-Fi network of its own for the phones. Works with no Wi-Fi at the venue, or when the venue Wi-Fi keeps phones apart from the PC. Phones on it have no internet.</p>
+        <p class="dim">This PC opens a Wi-Fi network for the phones. Works with no Wi-Fi at the venue, or when the venue Wi-Fi keeps phones apart from the PC. When this PC has internet it is Windows' Mobile hotspot, with the name and password set in Windows, and phones on it have internet too. Without internet it is a small network of Stagio's own, and phones on it have no internet.</p>
+        <p class="warn-text hidden" id="ownWifiNote"></p>
         <div class="hidden" id="ownWifiOn">
           <div class="qr-pair">
             <figure><div class="qr" id="ownWifiJoinQr"></div><figcaption>1. Scan to join <b class="mono" id="ownWifiSsid"></b><br>password <code class="mono" id="ownWifiPass"></code></figcaption></figure>
             <figure><div class="qr" id="ownWifiOpenQr"></div><figcaption>2. Then scan to open Stagio<br><code class="mono" id="ownWifiUrl"></code></figcaption></figure>
           </div>
           <ul class="hint-list">
-            <li>If the phone says the network has no internet, choose to stay connected.</li>
+            <li>Without internet: if the phone says the network has no internet, choose to stay connected.</li>
             <li>If the phone joins but the page doesn't open: Windows may be blocking Stagio on this kind of network. Allow Stagio for public networks in Windows Security → Firewall → Allow an app.</li>
-            <li>It stays on while Stagio runs; the name and password are always the same, so phones join again by themselves.</li>
+            <li>It stays on while Stagio runs (Stagio starts it again if Windows turns it off); the name and password stay the same, so phones join again by themselves. Stop turns the Mobile hotspot off only if Stagio turned it on.</li>
           </ul>
         </div>
       </div>
@@ -348,13 +349,16 @@
       <div class="link-card" id="btCard">
         <div class="link-h"><b>Bluetooth</b><span class="dim">Android phones, in Chrome</span><span class="grow"></span><span class="tag" id="btTag"></span><button class="btn sm" id="btnBluetooth">Start</button></div>
         <p class="dim">For when no Wi-Fi works at all. The phone controls slides, black/white, cues and fades; it shows the slide number, not pictures. iPhones can't use Bluetooth from a web page: use Stagio Wi-Fi.</p>
+        <p class="warn-text hidden" id="btErr"></p>
         <div class="hidden" id="btOn">
           <div class="qr-pair">
-            <figure><div class="qr" id="btPageQr"></div><figcaption>On the Android phone, open this page in Chrome<br><code class="mono" id="btPageUrl"></code></figcaption></figure>
+            <figure><div class="qr" id="btPageQr"></div><figcaption>Scan with the Android phone and open it in Chrome<br><code class="mono" id="btPageUrl"></code></figcaption></figure>
           </div>
+          <div class="remote-alt"><div><span class="label">PIN</span><code class="mono pin" id="btPin"></code></div></div>
           <ul class="hint-list">
-            <li>The first time it needs internet (mobile data is fine); after that it works offline. Add it to the home screen.</li>
-            <li>Tap <b>Connect</b>, choose this PC in the list, and enter the PIN above.</li>
+            <li>The code opens the page and gives the phone a key: nothing to type. Opened another way (home screen, typed address): type this PIN, the one at the top of this window, not the Stage PIN. Scanning is safer: commands signed with the PIN could be guessed by someone who recorded them.</li>
+            <li>Tap <b>Connect</b> and choose <b id="btName">this computer</b> in the list (only computers running Stagio Bluetooth appear there).</li>
+            <li>The first time the page needs internet (mobile data is fine); after that it works offline. Add it to the home screen.</li>
           </ul>
         </div>
       </div>
@@ -671,6 +675,7 @@
   <div class="drop-veil">Drop to open in PowerPoint</div>
   <div class="toast" id="toast"></div>
   <div class="pv-prompt hidden" id="pvPrompt"><span id="pvPromptText"></span><button class="btn sm primary" id="pvPromptYes">Turn on</button><button class="btn sm" id="pvPromptNo">Not now</button></div>
+  <script src="sign.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

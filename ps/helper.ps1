@@ -2607,11 +2607,64 @@ function Display-List {
 
 # ---------------- Stagio's own Wi-Fi ----------------
 # When phones can't reach this PC over the venue's Wi-Fi (no Wi-Fi, a guest network, or "AP
-# isolation" keeping devices apart), Stagio opens a small Wi-Fi network of its own: Wi-Fi Direct
-# in "legacy" mode, an ordinary network any phone can join with a password. It lasts while this
-# helper runs it. The PC keeps its normal connection too where the Wi-Fi card allows both.
+# isolation" keeping devices apart), Stagio opens a Wi-Fi network for them:
+#   - this PC has internet: Windows' own Mobile hotspot, so phones on it have internet too. Its
+#     name and password stay as they are in Windows Settings (only read here, for the QR code). If
+#     it was already on, it is used and left on afterwards.
+#   - otherwise (or if the hotspot can't start): a small network of Stagio's own, Wi-Fi Direct in
+#     "legacy" mode, an ordinary network any phone can join with a password, without internet.
+# It lasts while this helper runs it. The PC keeps its normal connection too where the Wi-Fi card
+# allows both.
 
 $script:wifiPub = $null
+$script:hotspot = $null       # the tethering manager while Stagio uses the Mobile hotspot
+$script:hotspotOurs = $false  # Stagio turned it on (and so turns it off again)
+$script:hotspotNet = $null    # @{ ssid; pass } as set in Windows
+
+$script:asTaskOp = $null
+function Await-Op($op, $type, $ms, $what) {
+  if (-not $script:asTaskOp) {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $script:asTaskOp = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+      $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+  }
+  $t = $script:asTaskOp.MakeGenericMethod($type).Invoke($null, @($op))
+  if (-not $t.Wait($ms)) { throw "$what did not respond" }
+  return $t.Result
+}
+
+# The Mobile hotspot for this PC's internet connection, or $null (no internet, or it can't share).
+function Hotspot-Manager {
+  $null = [Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.Connectivity, ContentType = WindowsRuntime]
+  $null = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime]
+  $p = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
+  if (-not $p -or [string]$p.GetNetworkConnectivityLevel() -ne 'InternetAccess') { return $null }
+  $T = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]
+  if ([string]$T::GetTetheringCapabilityFromConnectionProfile($p) -ne 'Enabled') { return $null }
+  return $T::CreateFromConnectionProfile($p)
+}
+
+function Hotspot-Start {
+  $m = Hotspot-Manager
+  if (-not $m) { return $null }
+  $c = $m.GetCurrentAccessPointConfiguration()
+  if (-not $c.Ssid -or -not $c.Passphrase) { return $null }
+  $ours = $false
+  if ([string]$m.TetheringOperationalState -ne 'On') {
+    $r = Await-Op $m.StartTetheringAsync() ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult]) 25000 'The Mobile hotspot'
+    if ([string]$r.Status -ne 'Success') { throw "Mobile hotspot: $($r.Status) $($r.AdditionalErrorMessage)" }
+    $ours = $true
+  }
+  $script:hotspot = $m
+  $script:hotspotOurs = $ours
+  $script:hotspotNet = @{ ssid = [string]$c.Ssid; pass = [string]$c.Passphrase }
+  for ($i = 0; $i -lt 60; $i++) {
+    $ip = OwnWifi-Ip
+    if ($ip) { return @{ on = $true; ip = $ip; ssid = $script:hotspotNet.ssid; pass = $script:hotspotNet.pass; internet = $true } }
+    Start-Sleep -Milliseconds 250
+  }
+  return OwnWifi-State
+}
 
 function OwnWifi-Ip {
   foreach ($ni in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
@@ -2626,18 +2679,36 @@ function OwnWifi-Ip {
 
 function OwnWifi-Stop {
   if ($script:wifiPub) { try { $script:wifiPub.Stop() } catch { }; $script:wifiPub = $null }
+  if ($script:hotspot) {
+    # Only a hotspot Stagio turned on is turned off; one that was on before stays on.
+    if ($script:hotspotOurs) {
+      try { $null = Await-Op $script:hotspot.StopTetheringAsync() ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult]) 15000 'The Mobile hotspot' } catch { }
+    }
+    $script:hotspot = $null; $script:hotspotOurs = $false; $script:hotspotNet = $null
+  }
   return $true
 }
 
 function OwnWifi-State {
+  if ($script:hotspot) {
+    $on = [string]$script:hotspot.TetheringOperationalState -eq 'On'
+    return @{ on = $on; ip = $(if ($on) { OwnWifi-Ip } else { $null }); ssid = $script:hotspotNet.ssid; pass = $script:hotspotNet.pass; internet = $true; clients = [int]$script:hotspot.ClientCount }
+  }
   $on = [bool]($script:wifiPub -and [string]$script:wifiPub.Status -eq 'Started')
-  return @{ on = $on; ip = $(if ($on) { OwnWifi-Ip } else { $null }) }
+  return @{ on = $on; ip = $(if ($on) { OwnWifi-Ip } else { $null }); internet = $false }
 }
 
 function OwnWifi-Start($a) {
   $null = [Windows.Devices.WiFiDirect.WiFiDirectAdvertisementPublisher, Windows.Devices.WiFiDirect, ContentType = WindowsRuntime]
   $null = [Windows.Security.Credentials.PasswordCredential, Windows.Security.Credentials, ContentType = WindowsRuntime]
   OwnWifi-Stop | Out-Null
+  # With internet: the Mobile hotspot (phones get internet too). If it can't start, Stagio's own
+  # network below, and why the hotspot didn't work goes back with it.
+  $why = $null
+  if ($a.hotspot -ne $false) {
+    try { $h = Hotspot-Start; if ($h -and $h.on) { return $h } } catch { $why = "$_" }
+    if ($script:hotspot) { OwnWifi-Stop | Out-Null }
+  }
   $pub = New-Object Windows.Devices.WiFiDirect.WiFiDirectAdvertisementPublisher
   $pub.Advertisement.IsAutonomousGroupOwnerEnabled = $true
   $leg = $pub.Advertisement.LegacySettings
@@ -2656,9 +2727,11 @@ function OwnWifi-Start($a) {
       throw 'Windows could not open the network. Check that Wi-Fi is switched on; some Wi-Fi cards cannot host a network.'
     }
     $ip = OwnWifi-Ip
-    if ([string]$pub.Status -eq 'Started' -and $ip) { return @{ on = $true; ip = $ip } }
+    if ([string]$pub.Status -eq 'Started' -and $ip) { return @{ on = $true; ip = $ip; internet = $false; hotspotError = $why } }
   }
-  return OwnWifi-State
+  $s = OwnWifi-State
+  $s.hotspotError = $why
+  return $s
 }
 
 # ---------------- Bluetooth remote ----------------

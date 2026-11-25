@@ -591,6 +591,28 @@ async function runChecks() {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+/** A phone or tablet on the LAN, doing what public/sign.js does in the browser (lib/sign.js). */
+const SG = require('../lib/sign');
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1';
+/** Proves it knows a secret (code or PIN) without sending it: { key, status, text }. */
+async function getKey(lan, p, label, secret, ua = IPHONE) {
+  const np = SG.nonce();
+  const r = await fetch(lan + p, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': ua }, body: JSON.stringify({ np, proof: SG.b64u(SG.hmac(secret, `${label}|${np}`)) }) }).catch(() => null);
+  const text = r ? await r.text() : '';
+  let j = {}; try { j = JSON.parse(text); } catch { /* not json */ }
+  if (!j.ok) return { key: null, status: r?.status, text };
+  const { ns, ok } = j.data;
+  if (ok !== SG.b64u(SG.hmac(secret, `pc|${np}|${ns}`))) return { key: null, status: 'not the PC', text };
+  let key = SG.hmac(secret, `key|${np}|${ns}`);
+  if (j.data.wrapped) key = SG.xor(SG.fromB64u(j.data.wrapped), SG.hmac(secret, `wrap|${np}|${ns}`));
+  return { key, status: r.status, text };
+}
+/** A signed request (headers can be changed afterwards to try tampering). */
+const sfetch = (lan, key, method, p, body, change = (h) => h) => fetch(lan + p, {
+  method, body, headers: change({ ...(body ? { 'Content-Type': 'application/json' } : {}), ...SG.signHeaders(key, method, p, body) }),
+}).catch(() => null);
+const pairCodeOf = (qrUrl) => new URLSearchParams(new URL(qrUrl).hash.slice(1)).get('pair');
+
 async function serverChecks() {
   const BASE = 'http://127.0.0.1:7300';
   const get = (p, opt) => fetch(BASE + p, opt);
@@ -626,18 +648,48 @@ async function serverChecks() {
     const lan = remote.data.url.replace(/\/$/, '');
     const noKey = await fetch(`${lan}/api/state`).catch(() => null);
     check('LAN request without a key is refused', noKey?.status === 401, `status ${noKey?.status}`);
-    // The QR code carries a pairing code, never a key; the phone swaps it for a key of its own.
-    const code = new URL(remote.data.qrUrl).searchParams.get('pair');
-    check('the QR code carries a pairing code, not a key', !!code && !new URL(remote.data.qrUrl).searchParams.get('key') && remote.data.pairUntil - Date.now() > 8 * 60000);
-    const paired = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1' }, body: JSON.stringify({ code }) }).then((r) => r.json()).catch(() => ({}));
-    const key = paired.data?.key;
-    check('scanning it gives the phone its own key', paired.ok === true && typeof key === 'string' && key.length >= 20);
-    const wrongCode = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'not-the-code' }) }).then((r) => r.status).catch(() => 0);
-    check('a wrong pairing code gives nothing', wrongCode === 401, `status ${wrongCode}`);
-    const withKey = await fetch(`${lan}/api/state`, { headers: { 'X-Stagio-Key': key } }).catch(() => null);
-    check('LAN request with the key is accepted', withKey?.status === 200, `status ${withKey?.status}`);
-    const remoteFromLan = await fetch(`${lan}/api/remote`, { headers: { 'X-Stagio-Key': key } }).catch(() => null);
+    // The QR code carries a pairing code after # (it never travels); the phone proves it has it,
+    // and phone and PC both work out the phone's own key, which is never sent either.
+    const qr = new URL(remote.data.qrUrl);
+    const code = pairCodeOf(remote.data.qrUrl);
+    check('the QR code carries a pairing code after # (never sent on the network), not a key', !!code && code.length >= 22 && !qr.search && remote.data.pairUntil - Date.now() > 8 * 60000, remote.data.qrUrl.replace(/#.*/, '#…'));
+    const paired = await getKey(lan, '/api/pair', 'pair', code);
+    const key = paired.key;
+    check('scanning it gives the phone its own key, and neither the code nor the key travels', key?.length === 32 && !paired.text.includes(SG.b64u(key)) && !paired.text.includes(code), paired.text);
+    const wrongCode = await getKey(lan, '/api/pair', 'pair', 'not-the-code');
+    check('a wrong pairing code gives nothing', wrongCode.status === 401, `status ${wrongCode.status}`);
+    const oldPair = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }).then((r) => r.json()).catch(() => ({}));
+    check('a page from before signing (sending the code itself) is told to reload', !oldPair.ok && /Reload/.test(oldPair.error || ''), oldPair.error);
+    const signedOk = await sfetch(lan, key, 'GET', '/api/state');
+    check('a signed LAN request is accepted', signedOk?.status === 200, `status ${signedOk?.status}`);
+    const asKey = await fetch(`${lan}/api/state`, { headers: { 'X-Stagio-Key': SG.b64u(key) } }).catch(() => null);
+    check('the key itself, sent as before, is refused', asKey?.status === 401, `status ${asKey?.status}`);
+    // Recorded requests can't be used again or changed.
+    const h = SG.signHeaders(key, 'GET', '/api/state');
+    const first = await fetch(`${lan}/api/state`, { headers: h }).then((r) => r.status).catch(() => 0);
+    const again = await fetch(`${lan}/api/state`, { headers: h }).then((r) => r.status).catch(() => 0);
+    check('a recorded request sent again is refused', first === 200 && again === 401, `${first} then ${again}`);
+    const otherPath = await fetch(`${lan}/api/devices`, { headers: SG.signHeaders(key, 'GET', '/api/state') }).then((r) => r.status).catch(() => 0);
+    check('a signature for one address does not work for another', otherPath === 401, `status ${otherPath}`);
+    const bodyA = JSON.stringify({ hidePresenterView: true });
+    const tampered = await fetch(`${lan}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...SG.signHeaders(key, 'POST', '/api/settings', bodyA) }, body: JSON.stringify({ hidePresenterView: false }) }).then((r) => r.status).catch(() => 0);
+    check('a changed body is refused', tampered === 401, `status ${tampered}`);
+    const stale = await fetch(`${lan}/api/state`, { headers: SG.signHeaders(key, 'GET', '/api/state', undefined, Date.now() - 5 * 60000) }).then((r) => r.json().then((j) => ({ status: r.status, j }))).catch(() => ({}));
+    check('a request signed 5 minutes ago is refused, with the PC\'s time (a phone with a wrong clock signs again)', stale.status === 401 && Math.abs(stale.j?.clock - Date.now()) < 5000, JSON.stringify(stale));
+    // Signed links: what the browser loads by itself, for reading only.
+    const ectrl = new AbortController();
+    const linkEvents = await fetch(lan + SG.signUrl(key, '/api/events'), { signal: ectrl.signal }).then((r) => r.status).catch(() => 0);
+    ectrl.abort();
+    const linkState = await fetch(lan + SG.signUrl(key, '/api/state')).then((r) => r.status).catch(() => 0);
+    const linkPost = await fetch(lan + SG.signUrl(key, '/api/ppt/next'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status).catch(() => 0);
+    check('a signed link opens the live stream, and nothing that changes or reads more', linkEvents === 200 && linkState === 403 && linkPost === 401, `${linkEvents} ${linkState} ${linkPost}`);
+    const remoteFromLan = await sfetch(lan, key, 'GET', '/api/remote');
     check('/api/remote is refused from other devices', remoteFromLan?.status === 403, `status ${remoteFromLan?.status}`);
+    // A phone paired before signing works out its key from its old one (the SHA-256 the PC kept).
+    const pinLogin = await getKey(lan, '/api/login', 'login', remote.data.pin);
+    check('the PIN gives a key too (worked out on both sides)', pinLogin.key?.length === 32 && !pinLogin.text.includes(remote.data.pin), pinLogin.text);
+    const oldLogin = await fetch(`${lan}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: remote.data.pin }) }).then((r) => r.json()).catch(() => ({}));
+    check('a page from before signing (sending the PIN itself) is told to reload, and gets no key', !oldLogin.ok && /Reload/.test(oldLogin.error || '') && !oldLogin.data, oldLogin.error);
     const page = await fetch(`${lan}/`).catch(() => null);
     check('sign-in page loads from the LAN without a key', page?.status === 200);
   } else {
@@ -768,21 +820,52 @@ async function serverChecks() {
   const bad = await post('/api/ppt/restoreBackup', {}, JSON.stringify({ file: '..\\config.json' })).then((r) => r.json());
   check('restoring anything but an earlier version of the deck in view is refused', !bad.ok, bad.error);
 
-  // Bluetooth remote (0.8.0): every command carries the PIN; wrong PINs are ignored and a phone
-  // that keeps guessing is locked out for 5 minutes.
+  // Bluetooth remote: commands are signed, with the key from the Bluetooth QR code or with one
+  // from the typed PIN (neither goes over the air); unsigned, changed or replayed ones are
+  // ignored; a phone that keeps sending wrong ones is locked out for 5 minutes.
   if (remote.data?.pin) {
     const bt = (command, phone = 'checks-phone') => post('/api/debug/bluetoothCommand', {}, JSON.stringify({ phone, command })).then((r) => r.json());
-    const a0 = (await bt({ pin: remote.data.pin, c: 'hello' })).data.accepted;
-    const wrong = await bt({ pin: '000000', c: 'hello' });
-    check('Bluetooth: a command with a wrong PIN is ignored', wrong.data.accepted === a0, `accepted ${a0} -> ${wrong.data.accepted}`);
-    const right = await bt({ pin: remote.data.pin, c: 'hello' });
-    check('Bluetooth: with the right PIN it is accepted (the phone sees the count go up)', right.data.accepted === a0 + 1);
+    const z = (await bt({ c: 'hello' })).data.state.z;
+    let i = 0;
+    /** What the remote page sends: d 'k' (key from the code) or 'p' (from the PIN). */
+    const bsign = (key, d, c, extra = {}) => {
+      const m = { c, ...extra, z, r: 'checks', i: ++i, d };
+      m.s = SG.b64u(SG.hmac(key, `b1|${m.z}|${m.r}|${m.i}|${m.c}|${m.n ?? ''}|${m.sec ?? ''}`).subarray(0, 16));
+      return m;
+    };
+    const pinKey = (pin) => SG.sha256(`stagio-ble-pin|${pin}`);
+    check('Bluetooth: the state carries this start\'s random value for signing', typeof z === 'string' && z.length >= 8);
+    const a0 = (await bt(bsign(pinKey(remote.data.pin), 'p', 'hello'))).data.accepted;
+    const plain = await bt({ pin: remote.data.pin, c: 'hello' });
+    check('Bluetooth: an unsigned command (the PIN itself, as pages before signing sent it) is ignored', plain.data.accepted === a0, `accepted ${a0} -> ${plain.data.accepted}`);
+    const wrong = await bt(bsign(pinKey('000000'), 'p', 'hello'));
+    check('Bluetooth: a command signed with a wrong PIN is ignored', wrong.data.accepted === a0, `accepted ${a0} -> ${wrong.data.accepted}`);
+    const good = bsign(pinKey(remote.data.pin), 'p', 'hello');
+    const right = await bt(good);
+    check('Bluetooth: signed with the right PIN it is accepted (the phone sees the count go up)', right.data.accepted === a0 + 1);
+    const replay = await bt(good, 'recording-phone');
+    check('Bluetooth: the same signed command sent again (recorded) is ignored', replay.data.accepted === right.data.accepted);
+    const changed = await bt({ ...bsign(pinKey(remote.data.pin), 'p', 'hello'), c: 'next' });
+    check('Bluetooth: a signed command with its content changed is ignored', changed.data.accepted === right.data.accepted);
     check('Bluetooth: the state for phones stays small', JSON.stringify(right.data.state).length < 180, `${JSON.stringify(right.data.state).length} bytes`);
-    for (let i = 0; i < 8; i++) await bt({ pin: '111111', c: 'hello' }, 'guessing-phone');
-    const locked = await bt({ pin: remote.data.pin, c: 'hello' }, 'guessing-phone');
-    check('Bluetooth: after 8 wrong PINs that phone is locked out, even with the right PIN', locked.data.accepted === right.data.accepted);
-    const other = await bt({ pin: remote.data.pin, c: 'hello' }, 'another-phone');
+    for (let n = 0; n < 8; n++) await bt(bsign(pinKey('111111'), 'p', 'hello'), 'guessing-phone');
+    const locked = await bt(bsign(pinKey(remote.data.pin), 'p', 'hello'), 'guessing-phone');
+    check('Bluetooth: after 8 wrong commands that phone is locked out, even when right', locked.data.accepted === right.data.accepted);
+    const other = await bt(bsign(pinKey(remote.data.pin), 'p', 'hello'), 'another-phone');
     check('...other phones are not', other.data.accepted === right.data.accepted + 1);
+    const cfgFile = SERVER_DATA && path.join(SERVER_DATA, 'config.json');
+    const bleKey = cfgFile && fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')).bleKey : null;
+    if (bleKey) {
+      const viaCode = await bt(bsign(SG.fromB64u(bleKey), 'k', 'hello'), 'scanned-phone');
+      check('Bluetooth: signed with the key from the code it is accepted', viaCode.data.accepted === other.data.accepted + 1);
+      if (remote.data.remotePageQr) {
+        const want = await require('qrcode').toString(`https://rojakiisme.github.io/stagio/remote/#k=${bleKey}`, { type: 'svg', margin: 1 });
+        check('Bluetooth: the code carries the Bluetooth key after # (never sent to the web site, nor over the air)', remote.data.remotePageQr === want);
+      }
+    }
+    const st = await get('/api/state').then((r) => r.json());
+    const lk = (st.data || st).links?.bluetooth;
+    check('Bluetooth: the Remote window learns that a phone is locked out', !lk || lk.locked >= 1, JSON.stringify(lk));
   }
   // What this edition has, and refuses what it doesn't (Beta 1.0).
   const status = (p, body = '{}', method = 'POST') => fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body }).then((r) => r.status);
@@ -798,15 +881,15 @@ async function serverChecks() {
   // address, so this PC is not trusted as itself).
   if (ed.features.stage && remote.data?.stage?.pin && remote.data.url) {
     const lan = remote.data.url.replace(/\/$/, '');
-    const lanPost = (p, body, key) => fetch(lan + p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Stagio-Key': key } : {}) }, body: JSON.stringify(body || {}) });
-    const wrong = await lanPost('/api/stage/login', { pin: remote.data.pin === '000000' ? '111111' : '000000' });
+    const lanPost = (p, body, key) => (key ? sfetch(lan, key, 'POST', p, JSON.stringify(body || {})) : fetch(lan + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }));
+    const wrong = await getKey(lan, '/api/stage/login', 'stage', remote.data.pin === '000000' ? '111111' : '000000');
     check('Stage: a wrong stage PIN is refused', wrong.status === 401, `status ${wrong.status}`);
-    const asConsole = await lanPost('/api/login', { pin: remote.data.stage.pin });
+    const asConsole = await getKey(lan, '/api/login', 'login', remote.data.stage.pin);
     check('Stage: the stage PIN does not open the console', asConsole.status === 401, `status ${asConsole.status}`);
-    const login = await lanPost('/api/stage/login', { pin: remote.data.stage.pin }).then((r) => r.json());
-    const sk = login.data?.key;
-    check('Stage: the stage PIN gives the stage key', login.ok && !!sk && sk !== new URL(remote.data.qrUrl).searchParams.get('key'));
-    const sget = (p) => fetch(lan + p, { headers: { 'X-Stagio-Key': sk } }).then((r) => r.status);
+    const login = await getKey(lan, '/api/stage/login', 'stage', remote.data.stage.pin);
+    const sk = login.key;
+    check('Stage: the stage PIN gives the stage key, masked (never in the clear)', sk?.length === 32 && !login.text.includes(SG.b64u(sk)), login.text);
+    const sget = (p) => sfetch(lan, sk, 'GET', p).then((r) => r?.status);
     const refused = [await sget('/api/state'), await sget('/api/remote'), (await lanPost('/api/ppt/next', {}, sk)).status, (await lanPost('/api/stage/message', { text: 'x' }, sk)).status, (await lanPost('/api/cues/open/run', {}, sk)).status];
     check('Stage: its key reaches nothing else (state, remote, slides, messages, cues)', refused.every((x) => x === 403 || x === 401), refused.join(' '));
     check('Stage: its key reaches ping', (await sget('/api/ping')) === 200);
@@ -814,7 +897,7 @@ async function serverChecks() {
     check('Stage: Prev/Next refused while the console has them off', flipOff.status === 400, `status ${flipOff.status}`);
     // the live stream: the message arrives, and the speaker's "seen" reaches the console
     const sctrl = new AbortController();
-    const sres = await fetch(`${lan}/api/stage/events?key=${encodeURIComponent(sk)}`, { signal: sctrl.signal });
+    const sres = await fetch(lan + SG.signUrl(sk, '/api/stage/events'), { signal: sctrl.signal });
     let sv = null; let sbuf = '';
     (async () => {
       try {
@@ -830,7 +913,7 @@ async function serverChecks() {
       } catch { /* aborted */ }
     })();
     await sleep(800);
-    check('Stage: the stream starts with the stage view (no keys, no PIN in it)', !!sv && 'notes' in sv && !JSON.stringify(sv).includes(remote.data.pin) && !JSON.stringify(sv).includes(sk));
+    check('Stage: the stream starts with the stage view (no keys, no PIN in it)', !!sv && 'notes' in sv && !JSON.stringify(sv).includes(remote.data.pin) && !JSON.stringify(sv).includes(SG.b64u(sk)));
     await sleep(300);
     check('Stage: the console counts the connected stage display', live.stage?.screens >= 1, `${live.stage?.screens}`);
     const t0 = Date.now();
@@ -872,32 +955,28 @@ async function serverChecks() {
     const lan = remote.data.url.replace(/\/$/, '');
     const pairNew = async (ua) => {
       const r = await get('/api/remote').then((x) => x.json());
-      const code = new URL(r.data.qrUrl).searchParams.get('pair');
-      const j = await fetch(`${lan}/api/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': ua }, body: JSON.stringify({ code }) }).then((x) => x.json());
-      return j.data?.key;
+      return (await getKey(lan, '/api/pair', 'pair', pairCodeOf(r.data.qrUrl), ua)).key;
     };
-    const lanStatus = (key) => fetch(`${lan}/api/state`, { headers: { 'X-Stagio-Key': key } }).then((r) => r.status).catch(() => 0);
+    const lanStatus = (key) => sfetch(lan, key, 'GET', '/api/state').then((r) => r?.status || 0);
+    const lanStatusOf = (key, method, p, body) => sfetch(lan, key, method, p, body).then((r) => r?.status || 0);
     const k1 = await pairNew('Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/131.0 Mobile Safari/537.36');
     const k2 = await pairNew('Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Safari/604.1');
-    check('two phones get two different keys', !!k1 && !!k2 && k1 !== k2);
+    check('two phones get two different keys', !!k1 && !!k2 && !k1.equals(k2));
     const list = await get('/api/devices').then((r) => r.json());
     const d1 = list.data?.find((d) => d.name === 'Android phone · Chrome');
-    check('the Remote window lists them by kind of device (no keys in the list)', !!d1 && list.data.some((d) => d.name === 'iPad · Safari') && !JSON.stringify(list).includes(k1));
-    const fromLan = await fetch(`${lan}/api/devices`, { headers: { 'X-Stagio-Key': k1 } }).then((r) => r.status).catch(() => 0);
+    check('the Remote window lists them by kind of device (no keys in the list)', !!d1 && list.data.some((d) => d.name === 'iPad · Safari') && !JSON.stringify(list).includes(SG.b64u(k1)));
+    const fromLan = await lanStatusOf(k1, 'GET', '/api/devices');
     check('the device list is only for the Stagio PC', fromLan === 403, `status ${fromLan}`);
     const upd = (await get('/api/state').then((r) => r.json())).update;
-    const updFromLan = await fetch(`${lan}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k1 }, body: JSON.stringify({ on: true }) }).then((r) => r.status).catch(() => 0);
+    const updFromLan = await lanStatusOf(k1, 'POST', '/api/update', JSON.stringify({ on: true }));
     check('the update notice is off unless turned on, and only the Stagio PC can turn it on', upd?.on === false && !upd.latest && updFromLan === 403, `status ${updFromLan}`);
-    const cfgFile = SERVER_DATA && path.join(SERVER_DATA, 'config.json');
-    const cfgText = cfgFile && fs.existsSync(cfgFile) ? fs.readFileSync(cfgFile, 'utf8') : null;
-    if (cfgText !== null) check('config.json keeps only a hash of each device key', !cfgText.includes(k1) && !cfgText.includes(k2));
     await post('/api/devices/remove', {}, JSON.stringify({ id: d1?.id }));
     check('a removed phone is out, the others stay in', (await lanStatus(k1)) === 401 && (await lanStatus(k2)) === 200);
 
     // Next from two devices for the same slide at once never moves two steps. (Without a slide
     // show both fail or one is left out; the logic itself is checked without PowerPoint above.)
     const nx1 = post('/api/ppt/next', {}, JSON.stringify({ from: '7.0' })).then((r) => r.json());
-    const nx2 = await fetch(`${lan}/api/ppt/next`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k2 }, body: JSON.stringify({ from: '7.0' }) }).then((r) => r.json());
+    const nx2 = await sfetch(lan, k2, 'POST', '/api/ppt/next', JSON.stringify({ from: '7.0' })).then((r) => r.json());
     const nx1r = await nx1;
     const moved = [nx1r, nx2].filter((r) => r.ok && !r.data?.skipped).length;
     check('Next for the same slide from two devices at once never moves two steps', moved <= 1, `${JSON.stringify(nx1r)} ${JSON.stringify(nx2)}`);
@@ -906,7 +985,7 @@ async function serverChecks() {
     const reset = await post('/api/remote/reset').then((r) => r.json());
     const afterReset = await get('/api/remote').then((r) => r.json());
     check('New PIN and keys: a new PIN, and every phone has to connect again', reset.ok && afterReset.data.pin !== oldPin && (await lanStatus(k2)) === 401);
-    const resetFromLan = await fetch(`${lan}/api/remote/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stagio-Key': k2 }, body: '{}' }).then((r) => r.status).catch(() => 0);
+    const resetFromLan = await lanStatusOf(k2, 'POST', '/api/remote/reset', '{}');
     check('...which only the Stagio PC can do', resetFromLan === 401 || resetFromLan === 403, `status ${resetFromLan}`);
   }
   ctrl.abort();
@@ -1003,40 +1082,50 @@ function deviceChecks() {
   let saves = 0;
   const cfg = { accessKey: 'shared-key-from-before', pin: '123456', stagePin: '654321', stageKey: 'stage' };
   const dev = new Devices(cfg, () => { saves++; }, () => clock);
-  check('an existing install: phones with the shared key from before stay in, as one entry', !!dev.check('shared-key-from-before')?.legacy && cfg.devices.length === 1);
+  const ref = (k) => SG.refOf(k);
+  /** What a phone does with a scanned code: proves it has it, then works out its key. */
+  const scan = (code, name) => {
+    const np = SG.nonce();
+    const r = dev.pairWith(np, SG.b64u(SG.hmac(code, `pair|${np}`)), name);
+    return r && r.ok === SG.b64u(SG.hmac(code, `pc|${np}|${r.ns}`)) ? SG.hmac(code, `key|${np}|${r.ns}`) : null;
+  };
+  const oldKey = SG.sha256('shared-key-from-before');
+  check('an existing install: phones with the shared key from before stay in, as one entry, and sign with its SHA-256', !!dev.checkOld('shared-key-from-before')?.legacy && dev.find(ref(oldKey))?.device.legacy && cfg.devices.length === 1);
   const fresh = new Devices({ accessKey: 'x', devicesSince: 1 }, () => {}, () => clock);
-  check('a new install has no shared key entry', fresh.list().length === 0 && !fresh.check('x'));
+  check('a new install has no shared key entry', fresh.list().length === 0 && !fresh.checkOld('x'));
   const p = dev.pairCode();
-  check('a pairing code works for 10 minutes', p.until - clock === 10 * 60000 && /^[a-z2-9]{10}$/.test(p.code));
-  check('a wrong code is useless', dev.pairWith('aaaaaaaaaa', 'x') === null && dev.pairWith('', 'x') === null);
-  const a = dev.pairWith(p.code, 'iPhone · Safari');
-  const b = dev.pairWith(p.code, 'Android phone · Chrome');
-  check('every phone that uses the code gets its own key', a && b && a.key !== b.key && dev.check(a.key)?.id === a.device.id);
-  check('only a hash of the keys is kept', !JSON.stringify(cfg).includes(a.key) && !JSON.stringify(cfg).includes(b.key));
+  check('a pairing code works for 10 minutes and has 128 bits', p.until - clock === 10 * 60000 && /^[A-Za-z0-9_-]{22}$/.test(p.code));
+  check('a wrong code is useless', scan('aaaaaaaaaaaaaaaaaaaaaa', 'x') === null && dev.pairWith('', '', 'x') === null && dev.pairWith(SG.nonce(), 'bad', 'x') === null);
+  const a = scan(p.code, 'iPhone · Safari');
+  const b = scan(p.code, 'Android phone · Chrome');
+  check('every phone that uses the code gets its own key', a && b && !a.equals(b) && dev.find(ref(a))?.device.name === 'iPhone · Safari');
+  check('the pairing code is never stored', !JSON.stringify(cfg).includes(p.code));
   clock += 5 * 60000;
   check('the Remote window keeps the same code while it has time left', dev.pairCode().code === p.code);
   clock += 3.5 * 60000;
   const p2 = dev.pairCode();
   check('...and gets a new one when less than 2 minutes are left', p2.code !== p.code);
-  check('...while the old one still works to the end of its 10 minutes (a phone may have just scanned it)', !!dev.pairWith(p.code, 'x'));
+  check('...while the old one still works to the end of its 10 minutes (a phone may have just scanned it)', !!scan(p.code, 'x'));
   clock += 2 * 60000;
-  check('after its 10 minutes the old code is useless, the new one still works', dev.pairWith(p.code, 'x') === null && !!dev.pairWith(p2.code, 'x'));
+  check('after its 10 minutes the old code is useless, the new one still works', scan(p.code, 'x') === null && !!scan(p2.code, 'x'));
   clock += 10 * 60000;
-  check('after 10 minutes a code is useless', dev.pairWith(p2.code, 'x') === null);
-  dev.remove(a.device.id);
-  check('a removed device is out, the others stay in', !dev.check(a.key) && !!dev.check(b.key));
+  check('after 10 minutes a code is useless', scan(p2.code, 'x') === null);
+  dev.remove(dev.find(ref(a)).device.id);
+  check('a removed device is out, the others stay in', !dev.find(ref(a)) && !!dev.find(ref(b)));
   dev.remove('before');
-  check('removing the phones from before also changes the shared key (an older Stagio stops taking it)', cfg.accessKey !== 'shared-key-from-before' && !dev.check('shared-key-from-before'));
+  check('removing the phones from before also changes the shared key (an older Stagio stops taking it)', cfg.accessKey !== 'shared-key-from-before' && !dev.checkOld('shared-key-from-before'));
   const oldPin = cfg.pin;
+  const oldBle = cfg.bleKey;
   dev.reset();
-  check('New PIN and keys: new PIN and stage PIN, no devices left', cfg.pin !== oldPin && /^\d{6}$/.test(cfg.pin) && cfg.stagePin !== cfg.pin && cfg.devices.length === 0 && !dev.check(b.key));
-  const c = dev.add('Mac · Safari');
+  check('New PIN and keys: new PIN, stage PIN and Bluetooth key, no devices left', cfg.pin !== oldPin && /^\d{6}$/.test(cfg.pin) && cfg.stagePin !== cfg.pin && cfg.bleKey && cfg.bleKey !== oldBle && cfg.devices.length === 0 && !dev.find(ref(b)));
+  const c = SG.sha256('c');
+  dev.add('Mac · Safari', c);
   clock += 91 * 24 * 3600000;
   dev.prune();
-  check('a device not used for 90 days is forgotten', !dev.check(c.key));
+  check('a device not used for 90 days is forgotten', !dev.find(ref(c)));
   check('device names come from the browser', deviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1') === 'iPhone · Safari'
     && deviceName('Mozilla/5.0 (Linux; Android 15; SM-S921B) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36') === 'Android phone · Chrome');
-  check('"last used" is saved now and then, not on every request', (() => { const n = saves; const d = dev.add('x'); for (let i = 0; i < 50; i++) dev.check(d.key); return saves - n === 1; })());
+  check('"last used" is saved now and then, not on every request', (() => { const n = saves; const k = SG.sha256('d'); dev.add('x', k); for (let i = 0; i < 50; i++) dev.find(ref(k)); return saves - n === 1; })());
 
   // Wrong PINs: per address, and across the whole network for PINs (not for pairing codes).
   const { LoginGuard } = require('../lib/loginguard');

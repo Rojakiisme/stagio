@@ -4,6 +4,27 @@ What changed in each release, newest first. Each edition has its own version num
 Standard, Extra; Windows and Mac). The download page always has the newest of each:
 https://rojakiisme.github.io/stagio/
 
+## 2026-11-25 · Windows Lite 1.7 · Standard 1.8 · Extra 1.9 · Mac 1.7 · 1.7 · 1.8
+
+- **Signed requests**: a phone's key no longer travels on the network. The QR code's pairing code
+  is after # (it stays on the phone); phone and computer each work out the phone's key, and every
+  request is signed with it (HMAC-SHA256 over the address, time, a one-time value and the body).
+  Someone watching the venue's Wi-Fi can no longer take over Stagio or replay what they recorded.
+  (They can still see what the phones are shown: that would need HTTPS.) Phones paired before keep
+  working without pairing again; a page that was open during the update asks to be reloaded.
+  Pressing New PIN and keys once after updating is safer, since those phones used to send their key.
+  The stage display works the same way.
+- **Bluetooth remote**: signed commands too. Its QR code carries a Bluetooth key (after #), so
+  nothing needs typing; the PIN still works when typed, and the Remote window says scanning is
+  safer. The Bluetooth part of the Remote window now shows the PIN itself (before it said "the PIN
+  above", and the nearest PIN above was the Stage PIN, which the computer refuses), says why
+  Bluetooth didn't start, and says when a phone is locked out after 8 wrong tries (Stop and Start
+  lets it in at once). The remote page now loads fresh whenever there is internet.
+- **Stagio Wi-Fi with internet**: when the computer has internet, Stagio Wi-Fi turns on Windows'
+  Mobile hotspot instead, with the name and password set in Windows (Stagio doesn't change them),
+  so phones on it have internet too. Stagio starts it again if Windows turns it off, and Stop turns
+  it off only if Stagio turned it on. Without internet it is Stagio's own network, as before.
+
 ## 2026-11-24 · Windows Lite 1.6 · Standard 1.7 · Extra 1.8 · Mac 1.6 · 1.6 · 1.7
 
 - **New versions** (opt-in): Settings → About → "Tell me when a new version is out". Off by

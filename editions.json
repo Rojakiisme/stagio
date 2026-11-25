@@ -1,5 +1,5 @@
 {
-  "lite": { "name": "Stagio Lite", "windows": "1.6.0-beta", "mac": "1.6.0-beta" },
-  "standard": { "name": "Stagio Standard", "windows": "1.7.0-beta", "mac": "1.6.0-beta" },
-  "extra": { "name": "Stagio Extra", "windows": "1.8.0-beta", "mac": "1.7.0-beta" }
+  "lite": { "name": "Stagio Lite", "windows": "1.7.0-beta", "mac": "1.7.0-beta" },
+  "standard": { "name": "Stagio Standard", "windows": "1.8.0-beta", "mac": "1.7.0-beta" },
+  "extra": { "name": "Stagio Extra", "windows": "1.9.0-beta", "mac": "1.8.0-beta" }
 }

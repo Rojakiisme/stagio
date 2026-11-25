@@ -19,6 +19,7 @@ const { Devices, deviceName } = require('./lib/devices');
 const { StepGuard } = require('./lib/stepguard');
 const diagnostics = require('./lib/diagnostics');
 const { LoginGuard } = require('./lib/loginguard');
+const sign = require('./lib/sign');
 const { Updates } = require('./lib/updates');
 const platform = require('./lib/platform').create(); // Windows, or Mac (beta)
 // Lite, Standard or Extra (lib/edition.js): what this Stagio shows and does.
@@ -170,7 +171,8 @@ function readCookie(req, name) {
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json());
+// The body exactly as received: signed requests sign it (lib/sign.js).
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use((err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
     return res.status(400).json({ ok: false, error: 'The request could not be read' });
@@ -189,7 +191,7 @@ const CSP = [
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer'); // a ?key= address never travels to another site
+  res.setHeader('Referrer-Policy', 'no-referrer'); // a signed address never travels to another site
   next();
 });
 
@@ -219,23 +221,33 @@ app.use((req, res, next) => {
 // ---------------- remote access ----------------
 // The PC itself is always trusted. Every phone or tablet has its own key (lib/devices.js), which it
 // gets from the QR code (a pairing code that works for 10 minutes) or by entering the PIN. The key
-// is sent as a header (or ?key= for images and the live stream), with a cookie as a fallback, so
-// in-app browsers that drop cookies still work. A device removed in the Remote window is out.
+// itself never travels: both sides work it out, and every request is signed with it (lib/sign.js).
+// A device removed in the Remote window is out.
 
 const devices = new Devices(cfg, saveCfg);
 const CONSOLE = { id: 'console', name: 'This PC' };
-// X-OneDesk-Key: the same header from before the rename (Stagio was called OneDesk).
-const headerKey = (req) => req.get('x-stagio-key') || req.get('x-onedesk-key');
-/** The device making the request: this PC, a paired phone or tablet, or null. */
+const STAGE = { id: 'stage', name: 'Stage display' };
+// The stage display (Extra) signs with the SHA-256 of the stage key, like a phone paired before signing.
+const stageSignKey = () => sign.sha256(String(cfg.stageKey));
+const verifier = new sign.Verifier((ref) => {
+  if (ed.stage && cfg.stageKey && ref === sign.refOf(stageSignKey())) return { key: stageSignKey(), stage: true };
+  const d = devices.find(ref);
+  return d ? { key: d.key, device: d.device } : null;
+});
+// Pages from before signing sent the key itself: X-Stagio-Key (X-OneDesk-Key before the rename,
+// when Stagio was called OneDesk), ?key= or the od_key cookie. Not accepted any more.
+const oldKey = (req) => req.get('x-stagio-key') || req.get('x-onedesk-key') || req.query.key || readCookie(req, 'od_key');
+
+/** The device making the request: this PC, a paired phone or tablet, the stage display, or why not. */
 function identify(req) {
-  if (isLoopback(req)) return CONSOLE;
-  for (const k of [headerKey(req), req.query.key, readCookie(req, 'od_key')]) {
-    const d = devices.check(k);
-    if (d) return d;
-  }
-  return null;
+  if (isLoopback(req)) return { device: CONSOLE };
+  const r = verifier.check(req, req.rawBody);
+  if (!r) return { error: 'unsigned' };
+  if (r.error) return r;
+  return r.who.stage ? { device: STAGE, stage: true, url: !!r.url } : { device: r.who.device, url: !!r.url };
 }
-const keyCookie = (key) => `od_key=${encodeURIComponent(key)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+// The od_key cookie of the pages from before signing held a key: it is deleted when a phone signs in.
+const dropOldCookie = (res) => res.setHeader('Set-Cookie', 'od_key=; Path=/; Max-Age=0; SameSite=Lax');
 
 // Wrong PINs and codes (lib/loginguard.js): per address, and for PINs across the whole network.
 const logins = new LoginGuard();
@@ -260,48 +272,70 @@ function wrong(req, res, what, pin) {
   }
   res.status(401).json({ ok: false, error: what });
 }
-const pinOk = (req, expected) => String(req.body?.pin || '').trim() === expected;
-/** Signs a new device in: its own key, also as a cookie. */
-function signIn(res, added) {
-  res.setHeader('Set-Cookie', keyCookie(added.key));
-  res.json({ ok: true, data: { key: added.key } });
+// A page from before signing sends the PIN or the code itself: it only needs reloading.
+const OLD_PAGE = 'Stagio on the computer was updated. Reload this page (or close it and open it again).';
+const oldPage = (req) => !!req.body && ('pin' in req.body || 'code' in req.body) && !('proof' in req.body);
+/** Signs a new device in: it proved it knows the PIN or a code; both sides now have its key. */
+function signIn(res, x) {
+  dropOldCookie(res);
+  res.json({ ok: true, data: { ns: x.ns, ok: x.ok } });
   broadcast();
 }
 app.post('/api/login', (req, res) => {
+  if (oldPage(req)) return res.status(400).json({ ok: false, error: OLD_PAGE });
   if (refused(req, res, true)) return;
-  if (!pinOk(req, cfg.pin)) return wrong(req, res, 'Wrong PIN', true);
+  const x = sign.exchange(String(cfg.pin), 'login', req.body?.np, req.body?.proof);
+  if (!x) return wrong(req, res, 'Wrong PIN', true);
   logins.ok(req.socket.remoteAddress);
-  signIn(res, devices.add(deviceName(req.get('user-agent'))));
+  devices.add(deviceName(req.get('user-agent')), x.key);
+  signIn(res, x);
 });
-// The QR code in the Remote window: ?pair=<code>, swapped here for the phone's own key.
+// The QR code in the Remote window: #pair=<code>, which the phone proves it has without sending it.
 app.post('/api/pair', (req, res) => {
+  if (oldPage(req)) return res.status(400).json({ ok: false, error: OLD_PAGE });
   if (refused(req, res, false)) return;
-  const added = devices.pairWith(String(req.body?.code || '').trim(), deviceName(req.get('user-agent')));
-  if (!added) return wrong(req, res, 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.', false);
+  const x = devices.pairWith(req.body?.np, req.body?.proof, deviceName(req.get('user-agent')));
+  if (!x) return wrong(req, res, 'This code has expired. Scan the code on the Stagio PC again, or enter the PIN.', false);
   logins.ok(req.socket.remoteAddress);
-  signIn(res, added);
+  signIn(res, x);
 });
-// Stage display (Extra): its own PIN gives its own key, which only reaches the stage display.
+// Stage display (Extra): its own PIN gives the stage key (masked with the PIN, see lib/sign.js),
+// which only reaches the stage display.
 app.post('/api/stage/login', (req, res) => {
   if (!ed.stage) return res.status(403).json({ ok: false, error: `The stage display is not part of ${edition.name}` });
+  if (oldPage(req)) return res.status(400).json({ ok: false, error: OLD_PAGE });
   if (refused(req, res, true)) return;
-  if (!pinOk(req, cfg.stagePin)) return wrong(req, res, 'Wrong PIN', true);
+  const x = sign.exchange(String(cfg.stagePin), 'stage', req.body?.np, req.body?.proof);
+  if (!x) return wrong(req, res, 'Wrong PIN', true);
   logins.ok(req.socket.remoteAddress);
-  res.json({ ok: true, data: { key: cfg.stageKey } });
+  const mask = sign.hmac(String(cfg.stagePin), `wrap|${req.body.np}|${x.ns}`);
+  res.json({ ok: true, data: { ns: x.ns, ok: x.ok, wrapped: sign.b64u(sign.xor(stageSignKey(), mask)) } });
 });
 
 // What a stage display may reach with its key: its own state, slide pictures, the live picture,
 // acknowledging a message, and (when the console allows it) previous/next.
 const STAGE_PATHS = [/^\/api\/ping$/, /^\/api\/stage\/(events|ack|next|prev)$/, /^\/api\/ppt\/thumb$/, /^\/api\/program$/];
-const isStageKey = (req) => ed.stage && !!cfg.stageKey && [headerKey(req), req.query.key].includes(cfg.stageKey);
+// Signed links (pictures, live streams: the browser loads them itself) are for reading: only these.
+const URL_PATHS = [/^\/api\/events$/, /^\/api\/stage\/events$/, /^\/api\/ppt\/thumb$/, /^\/api\/program$/, /^\/api\/music\/art$/];
 app.use((req, res, next) => {
-  const dev = identify(req);
-  if (dev) { req.device = dev; return next(); }
-  if (isStageKey(req)) {
-    if (STAGE_PATHS.some((p) => p.test(req.path))) { req.stage = true; req.device = { id: 'stage', name: 'Stage display' }; return next(); }
-    return res.status(403).json({ ok: false, error: 'The stage display can only show; it cannot do this' });
+  const r = identify(req);
+  if (r.device) {
+    if (r.url && !URL_PATHS.some((p) => p.test(req.path))) return res.status(403).json({ ok: false, error: 'Not with a signed link' });
+    if (r.stage && !STAGE_PATHS.some((p) => p.test(req.path))) return res.status(403).json({ ok: false, error: 'The stage display can only show; it cannot do this' });
+    req.device = r.device;
+    if (r.stage) req.stage = true;
+    return next();
   }
-  res.status(401).json({ ok: false, error: 'Not signed in', login: true });
+  // The phone's clock is off: it gets the PC's time and signs again.
+  if (r.error === 'clock') return res.status(401).json({ ok: false, error: 'Clock', clock: r.clock });
+  // A page from before signing (still open on a phone while Stagio was updated): its ping is
+  // answered, so that page keeps its key (after a reload the new page works out its signing key
+  // from it); everything else is refused.
+  const old = r.error === 'unsigned' ? oldKey(req) : null;
+  if (old && req.path === '/api/ping' && (devices.checkOld(old) || (ed.stage && old === cfg.stageKey))) {
+    return res.json({ ok: true, now: Date.now(), reload: true });
+  }
+  res.status(401).json({ ok: false, error: old ? OLD_PAGE : 'Not signed in', login: !old });
 });
 
 // What this edition doesn't have is refused here, whatever a page or a phone asks for.
@@ -344,32 +378,40 @@ app.get('/api/remote', async (req, res) => {
   // Stagio's own Wi-Fi: a code that joins the network, then one that opens the console on it.
   let own = null;
   if (ownWifi.on && ownWifi.ip) {
-    const join = `WIFI:T:WPA;S:${cfg.ownWifi.ssid};P:${cfg.ownWifi.pass};;`;
-    const openUrl = `http://${ownWifi.ip}:${cfg.port}/?pair=${pair.code}`;
+    const w = ownWifiNet || cfg.ownWifi;
+    const wq = (t) => String(t).replace(/([\\;,:"])/g, '\\$1'); // escaped for the Wi-Fi QR code
+    const join = `WIFI:T:WPA;S:${wq(w.ssid)};P:${wq(w.pass)};;`;
+    const openUrl = `http://${ownWifi.ip}:${cfg.port}/#pair=${pair.code}`;
     own = {
-      ssid: cfg.ownWifi.ssid, pass: cfg.ownWifi.pass, url: `http://${ownWifi.ip}:${cfg.port}/`,
+      ssid: w.ssid, pass: w.pass, internet: ownWifi.internet, url: `http://${ownWifi.ip}:${cfg.port}/`,
       joinQr: await QRCode.toString(join, { type: 'svg', margin: 1 }),
       openQr: await QRCode.toString(openUrl, { type: 'svg', margin: 1 }),
     };
   }
-  const remotePageQr = platform.features.bluetooth ? await QRCode.toString(REMOTE_PAGE, { type: 'svg', margin: 1 }) : null;
+  // Bluetooth: the remote page with the Bluetooth key after # (never sent to the web site, never
+  // over the air: the page signs its commands with it).
+  const remotePageQr = platform.features.bluetooth ? await QRCode.toString(`${REMOTE_PAGE}#k=${cfg.bleKey}`, { type: 'svg', margin: 1 }) : null;
   const [lan, ...others] = lanAddresses().filter((a) => a !== ownWifi.ip);
   // Stage display (Extra): its own code and PIN, on the venue's Wi-Fi or else Stagio's own.
   let stage = null;
   if (ed.stage) {
     const host = lan || (ownWifi.on && ownWifi.ip) || null;
     const stageUrl = host ? `http://${host}:${cfg.port}/stage.html` : null;
-    stage = { url: stageUrl, pin: cfg.stagePin, qr: stageUrl ? await QRCode.toString(`${stageUrl}?key=${cfg.stageKey}`, { type: 'svg', margin: 1 }) : null };
+    stage = { url: stageUrl, pin: cfg.stagePin, qr: stageUrl ? await QRCode.toString(`${stageUrl}#key=${cfg.stageKey}`, { type: 'svg', margin: 1 }) : null };
   }
   const pairUntil = pair.until;
-  if (!lan && !own) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin, pairUntil } });
-  if (!lan) return res.json({ ok: true, data: { own, remotePageQr, stage, pin: cfg.pin, pairUntil, url: null, others: [], qr: null, wifi: null } });
-  const qrUrl = `http://${lan}:${cfg.port}/?pair=${pair.code}`;
+  // The name the phone's Bluetooth list shows for this PC (Windows: the computer name).
+  const btName = platform.features.bluetooth && platform.os === 'windows' ? os.hostname() : null;
+  if (!lan && !own) return res.json({ ok: true, data: { own, remotePageQr, btName, stage, pin: cfg.pin, pairUntil } });
+  if (!lan) return res.json({ ok: true, data: { own, remotePageQr, btName, stage, pin: cfg.pin, pairUntil, url: null, others: [], qr: null, wifi: null } });
+  // The code after #: it stays on the phone (lib/sign.js).
+  const qrUrl = `http://${lan}:${cfg.port}/#pair=${pair.code}`;
   res.json({
     ok: true,
     data: {
       own,
       remotePageQr,
+      btName,
       stage,
       url: `http://${lan}:${cfg.port}/`, // to type in by hand (then enter the PIN)
       others: others.map((a) => `http://${a}:${cfg.port}/`),
@@ -397,6 +439,9 @@ app.post('/api/devices/remove', onlyHere, (req, res) => {
 app.post('/api/remote/reset', onlyHere, (req, res) => {
   devices.reset();
   logins.clear();
+  verifier.forget();
+  bleFails.clear();
+  newBleSession();
   for (const c of [...clients]) if (c.remote) c.end();
   for (const c of [...stageClients]) c.end();
   broadcast();
@@ -441,7 +486,7 @@ function buildParts() {
     remotes: remoteCount(),
     // Backup connections (no password or key here: the state also goes to phones).
     links: {
-      ownWifi: platform.features.ownWifi ? { ...ownWifi, ssid: cfg.ownWifi.ssid } : null,
+      ownWifi: platform.features.ownWifi ? { ...ownWifi, ssid: (ownWifiNet || cfg.ownWifi).ssid } : null,
       bluetooth: platform.features.bluetooth ? { ...bt } : null,
       remotePage: REMOTE_PAGE,
     },
@@ -539,7 +584,7 @@ app.get('/api/diagnostics', onlyHere, (req, res) => {
     timings: Object.fromEntries(Object.entries(platform.timings()).map(([k, v]) => [k, { n: v.n, avgMs: Math.round(v.totalMs / v.n), maxMs: v.maxMs }])),
   }, {
     logFile: path.join(config.DATA_DIR, 'stagio.log'),
-    secrets: [cfg.pin, cfg.stagePin, cfg.accessKey, cfg.stageKey, cfg.ownWifi?.pass, ...devices.codes()],
+    secrets: [cfg.pin, cfg.stagePin, cfg.accessKey, cfg.stageKey, cfg.bleKey, cfg.ownWifi?.pass, ownWifiNet?.pass, ...devices.codes()],
   });
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, (c) => (c === 'T' ? '-' : c === ':' ? '' : '-'));
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -602,33 +647,53 @@ const act = (fn, after) => async (req, res) => {
 };
 
 // ---------------- when the phone can't use the venue's Wi-Fi (Windows) ----------------
-// 1. Stagio's own Wi-Fi: this PC opens a small network ("Stagio-XXXX"); phones join it by QR
-//    code and open the console at the PC's address on it. Same name and password every time.
+// 1. Stagio Wi-Fi: a network for the phones, which join it by QR code and open the console at the
+//    PC's address on it. With internet on this PC it is Windows' own Mobile hotspot (its name and
+//    password as set in Windows; phones on it have internet too); without, a small network of
+//    Stagio's own ("Stagio-XXXX", the same name and password every time, no internet). See
+//    "Stagio's own Wi-Fi" in helper.ps1.
 // 2. Bluetooth (Android, Chrome): the phone opens Stagio's remote page (on the download site,
-//    https, so Chrome allows Bluetooth) and sends commands straight to this PC; the PIN is part of
-//    every command. Runs in the "net" helper (see Bluetooth remote in helper.ps1).
+//    https, so Chrome allows Bluetooth) and sends signed commands straight to this PC. Runs in
+//    the "net" helper (see Bluetooth remote in helper.ps1).
 const netHelper = platform.helpers?.net || null;
-const ownWifi = { on: false, ip: null, error: null, busy: false };
-const bt = { on: false, phones: 0, error: null, busy: false };
-const REMOTE_PAGE = 'https://rojakiisme.github.io/stagio/remote/';
-
-app.post('/api/ownWifi', act(async (req) => {
-  if (!platform.features.ownWifi || !netHelper) throw new Error('Not available on this computer');
-  if (!isLoopback(req)) throw new Error('Do this on the Stagio PC');
-  if (req.body?.on === false) {
-    await netHelper.call('wifi.stop').catch(() => {});
-    Object.assign(ownWifi, { on: false, ip: null, error: null });
-    return;
-  }
+// internet: the Mobile hotspot (phones get internet); note: why it isn't, when it couldn't start.
+const ownWifi = { on: false, ip: null, error: null, busy: false, internet: false, clients: null, note: null };
+let ownWifiWanted = false;   // switched on in the Remote window (kept on while Stagio runs)
+let ownWifiNet = null;       // { ssid, pass } of the network in use: never in the state (phones get that)
+let ownWifiRetryAt = 0;
+/** Starts Stagio Wi-Fi (the Mobile hotspot, or Stagio's own network). */
+async function startOwnWifi() {
   ownWifi.busy = true; ownWifi.error = null; broadcast();
   try {
-    const r = await netHelper.call('wifi.start', cfg.ownWifi, { timeoutMs: 30000 });
-    Object.assign(ownWifi, { on: !!r.on && !!r.ip, ip: r.ip || null });
+    const r = await netHelper.call('wifi.start', cfg.ownWifi, { timeoutMs: 45000 });
+    ownWifiNet = r.ssid && r.pass ? { ssid: r.ssid, pass: r.pass } : { ...cfg.ownWifi };
+    Object.assign(ownWifi, {
+      on: !!r.on && !!r.ip, ip: r.ip || null, internet: !!r.internet, clients: r.clients ?? null,
+      note: r.hotspotError ? `The Mobile hotspot did not start (${String(r.hotspotError).slice(0, 160)}), so this is Stagio's own network, without internet.` : null,
+    });
     if (!ownWifi.on) throw new Error('The network started but has no address yet. Try again in a moment.');
   } catch (e) {
     Object.assign(ownWifi, { on: false, ip: null, error: e.message });
     throw e;
   } finally { ownWifi.busy = false; }
+}
+/** Stops it (a Mobile hotspot that was on before Stagio used it stays on). */
+async function stopOwnWifi() {
+  ownWifiWanted = false;
+  await netHelper?.call('wifi.stop').catch(() => {});
+  Object.assign(ownWifi, { on: false, ip: null, error: null, internet: false, clients: null, note: null });
+  ownWifiNet = null;
+}
+const bt = { on: false, phones: 0, error: null, busy: false, locked: 0 };
+const REMOTE_PAGE = 'https://rojakiisme.github.io/stagio/remote/';
+
+app.post('/api/ownWifi', act(async (req) => {
+  if (!platform.features.ownWifi || !netHelper) throw new Error('Not available on this computer');
+  if (!isLoopback(req)) throw new Error('Do this on the Stagio PC');
+  if (req.body?.on === false) return stopOwnWifi();
+  ownWifiWanted = true;
+  ownWifiRetryAt = Date.now();
+  await startOwnWifi();
 }));
 
 app.post('/api/bluetooth', act(async (req) => {
@@ -640,6 +705,9 @@ app.post('/api/bluetooth', act(async (req) => {
     return;
   }
   bt.busy = true; bt.error = null; broadcast();
+  bleFails.clear(); // a fresh start also lets in a phone that typed a wrong PIN too often
+  bt.locked = 0;
+  newBleSession();
   try {
     const st = await netHelper.call('ble.start', {}, { timeoutMs: 30000 });
     if (st !== 'Started') throw new Error(`Bluetooth did not start advertising (${st}). Check that Bluetooth is on.`);
@@ -666,23 +734,57 @@ function bleState() {
     f: music()?.fading || '',
     k: !!cfg.cueShift,
     a: bleAccepted, // commands accepted so far: a phone sees it go up when its PIN is right
+    z: bleSession,  // this start's random value, part of every signed command (see bleSigned)
   });
 }
 let bleAccepted = 0;
+// Bluetooth commands are signed (the idea of lib/sign.js, made small for Bluetooth):
+//   { c, n?, z, r, i, d, s }   z: bleSession (in the state); r: the page's own random value;
+//   i: its count of commands; d: 'k' = the key from the QR code (cfg.bleKey), 'p' = from the
+//   typed PIN; s: the first 16 bytes of HMAC(key, "b1|z|r|i|c|n|sec"), base64url.
+// So the key and the PIN never go over the air, a recorded command can't be sent again (each
+// signature once per session) and can't be changed. (A PIN-signed command someone recorded lets
+// them try all million PINs afterwards: the Remote window says scanning is safer.)
+let bleSession = '';
+const bleUsed = new Set();
+function newBleSession() { bleSession = sign.nonce().slice(0, 12); bleUsed.clear(); }
+newBleSession();
+const bleKeyOf = (d) => (d === 'k' ? sign.fromB64u(cfg.bleKey) : d === 'p' ? sign.sha256(`stagio-ble-pin|${cfg.pin}`) : null);
+const bleText = (c) => `b1|${c.z}|${c.r}|${c.i}|${c.c}|${c.n ?? ''}|${c.sec ?? ''}`;
+function bleSigned(c) {
+  const key = bleKeyOf(c.d);
+  if (!key || c.z !== bleSession || typeof c.s !== 'string' || typeof c.r !== 'string' || !Number.isInteger(c.i)) return false;
+  return sign.matches(c.s, sign.hmac(key, bleText(c)).subarray(0, 16));
+}
+const blePinFails = []; // when wrong commands came, from any phone (a phone can change its Bluetooth address)
 let bleSent = '';
 let bleCuesSent = '';
 const bleFails = new Map(); // phone -> { n, until }
+/** Phones ignored right now after 8 wrong PINs (for 5 minutes, or until Bluetooth is started again). */
+const bleLocked = () => [...bleFails.values()].filter((f) => f.until > Date.now()).length;
 
 async function bleCommand(phone, text) {
   let c;
   try { c = JSON.parse(text); } catch { return; }
+  if (!c || typeof c !== 'object') return;
+  const now = Date.now();
   const f = bleFails.get(phone) || { n: 0, until: 0 };
-  if (Date.now() < f.until) return;
-  if (String(c.pin || '') !== cfg.pin) {
-    if (++f.n >= 8) { f.n = 0; f.until = Date.now() + 5 * 60000; }
+  if (now < f.until) return;
+  // More than 30 wrong commands within a minute from all phones together: PIN-signed ones are
+  // refused for that minute (the code from the QR code still works).
+  while (blePinFails.length && now - blePinFails[0] > 60000) blePinFails.shift();
+  if (c.d === 'p' && blePinFails.length >= 30) return;
+  // Unsigned (a page from before signing, which sent the PIN itself) or wrongly signed.
+  if (!bleSigned(c)) {
+    blePinFails.push(now);
+    if (++f.n >= 8) { f.n = 0; f.until = now + 5 * 60000; }
     bleFails.set(phone, f);
+    bt.locked = bleLocked(); // the Remote window says so: otherwise the phone just seems dead
     return;
   }
+  if (bleUsed.has(c.s)) return; // recorded and sent again
+  bleUsed.add(c.s);
+  if (bleUsed.size > 20000) newBleSession(); // phones take the new value from the state
   bleFails.delete(phone);
   bleAccepted++;
   const show = ppt.state.show;
@@ -749,13 +851,26 @@ if (netHelper) {
     }
   })();
   loop(async () => {
-    if (ownWifi.on) {
+    if (ownWifiWanted && !ownWifi.busy) {
       const r = await netHelper.call('wifi.state').catch(() => null);
-      if (r) { ownWifi.on = !!r.on; ownWifi.ip = r.ip || null; if (!r.on) ownWifi.error = 'The network stopped (Wi-Fi switched off?)'; }
+      if (r?.on) {
+        // (right after starting, the address can be missing for a moment: keep the last one)
+        Object.assign(ownWifi, { on: true, ip: r.ip || ownWifi.ip, clients: r.clients ?? null, error: null });
+      } else if (r) {
+        // Windows turns an unused Mobile hotspot off after a while, and Wi-Fi may have been
+        // switched off: started again (every 30 seconds at most) while it is meant to be on.
+        ownWifi.on = false;
+        ownWifi.error = 'The network stopped (Wi-Fi switched off?). Starting it again…';
+        if (Date.now() - ownWifiRetryAt > 30000) {
+          ownWifiRetryAt = Date.now();
+          startOwnWifi().catch(() => {}).finally(() => broadcast());
+        }
+      }
     }
     if (bt.on) {
       const s = String(await netHelper.call('ble.status').catch(() => 'off'));
       if (s === 'off') { bt.on = false; bt.phones = 0; } else bt.phones = Number(s.split('|')[1]) || 0;
+      bt.locked = bleLocked();
     }
   }, 3000);
 }
@@ -1523,7 +1638,7 @@ process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
 const stop = () => { platform.stop(); mixerHelper?.stop(); updates.stop(); };
 /** Before the desktop app quits: apps sent to the headphones go back to the default output. */
-const beforeQuit = () => Promise.all([preview ? preview.shutdown() : null, mixer ? mixer.shutdown() : null]);
+const beforeQuit = () => Promise.all([preview ? preview.shutdown() : null, mixer ? mixer.shutdown() : null, ownWifiWanted ? stopOwnWifi() : null]);
 /** For the desktop app: is anything depending on Stagio right now? */
 const status = () => ({
   live: !!ppt.state.show,
@@ -1533,7 +1648,7 @@ const status = () => ({
     : restoring ? { mode: 'restore', file: nameParts(ppt.focusPath() || '').base, applying: true } : null,
 });
 if (require.main === module) {
-  const shutdown = () => { stop(); process.exit(0); };
+  const shutdown = () => { Promise.race([ownWifiWanted ? stopOwnWifi() : null, new Promise((r) => setTimeout(r, 4000))]).finally(() => { stop(); process.exit(0); }); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
