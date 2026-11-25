@@ -48,8 +48,9 @@
 
     <h2><span class="zh">在你的网络上传送的</span><span class="en">What travels on your network</span></h2>
     <ul>
-      <li><span class="zh">手机、平板和讲台提示屏通过本地 Wi-Fi 连到电脑：投影片图片、备注、计时，以及那台设备自己的钥匙。连线是<b>没有加密的 HTTP</b>，同一个网络上的人有可能看到。请用你信任的网络，或者用 Stagio Wi-Fi（Windows，有自己的密码）。</span><span class="en">Phones, tablets and stage displays talk to the computer over the local Wi-Fi: slide pictures, notes, timers, and that device's own key. The connection is <b>plain HTTP, not encrypted</b>: someone on the same network could see it. Use a network you trust, or Stagio Wi-Fi (Windows; it has its own password).</span></li>
-      <li><span class="zh">蓝牙遥控通过蓝牙传送指令，每个指令都带 PIN。</span><span class="en">The Bluetooth remote sends its commands over Bluetooth, each with the PIN.</span></li>
+      <li><span class="zh">手机、平板和讲台提示屏通过本地 Wi-Fi 连到电脑：投影片图片、备注、计时。每个请求都有签名，设备自己的钥匙从不在网络上传送，所以同一个网络上的人控制不了 Stagio，也不能重放录下的请求。但连线是<b>没有加密的 HTTP</b>，他们有可能看到手机收到的内容（投影片图片、备注、状态）。请用你信任的网络，或者用 Stagio Wi-Fi（Windows，有自己的密码）。</span><span class="en">Phones, tablets and stage displays talk to the computer over the local Wi-Fi: slide pictures, notes, timers. Every request is signed and the device's own key never travels, so someone on the same network can't control Stagio or replay what they recorded. But the connection is <b>plain HTTP, not encrypted</b>: they could see what the phones are shown (slide pictures, notes, the state). Use a network you trust, or Stagio Wi-Fi (Windows; it has its own password).</span></li>
+      <li><span class="zh">蓝牙遥控通过蓝牙传送指令，每个指令都有签名，钥匙和 PIN 都不会通过蓝牙传送。电脑上的蓝牙二维码把钥匙放在网址的 # 后面：这部分只留在手机里，不会传到网站。</span><span class="en">The Bluetooth remote sends its commands over Bluetooth, each signed; neither the key nor the PIN goes over the air. The Bluetooth code on the computer puts the key after # in the address: that part stays on the phone and is never sent to the web site.</span></li>
+      <li><span class="zh">Stagio Wi-Fi：电脑有网络时，它就是 Windows 自己的“移动热点”（名称和密码沿用 Windows 设置里的），连上的手机也能上网，用的是这台电脑的网络。</span><span class="en">Stagio Wi-Fi: when the computer has internet it is Windows' own Mobile hotspot (with the name and password set in Windows), and phones on it use the computer's internet.</span></li>
     </ul>
 
     <h2><span class="zh">会连到互联网的</span><span class="en">What reaches the internet</span></h2>
