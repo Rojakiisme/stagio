@@ -2,7 +2,7 @@
 // and its files come fresh from the site (so a phone always has the newest page, which matters
 // when Stagio changes how commands are sent), and the copy is kept; without one, or when the
 // site doesn't answer within a few seconds, the kept copy is used.
-const CACHE = 'stagio-bt-remote-v3';
+const CACHE = 'stagio-bt-remote-v4';
 const FILES = ['./', 'index.html', 'remote.js', 'remote.css', 'manifest.webmanifest', '../icons/favicon.png', '../icons/apple-touch-icon.png', '../icons/icon-192.png', '../icons/icon-512.png'];
 const WAIT_MS = 4000;
 
@@ -23,7 +23,8 @@ self.addEventListener('fetch', (e) => {
     const kept = () => caches.match(e.request).then((hit) => { if (hit && !done) { done = true; resolve(hit); } return hit; });
     // No answer in time (a venue network without internet can hang): the kept copy, if any.
     const timer = setTimeout(kept, WAIT_MS);
-    fresh.then((res) => { clearTimeout(timer); if (!done) { done = true; resolve(res); } })
+    // An error page (the site moved or is down) is not better than the kept copy.
+    fresh.then((res) => { clearTimeout(timer); if (!res.ok) return kept().then((hit) => { if (!done) { done = true; resolve(hit || res); } }); if (!done) { done = true; resolve(res); } })
       .catch(() => { clearTimeout(timer); kept().then((hit) => { if (!done) { done = true; resolve(hit || Response.error()); } }); });
   }));
 });

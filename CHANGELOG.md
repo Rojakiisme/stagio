@@ -4,6 +4,15 @@ What changed in each release, newest first. Each edition has its own version num
 Standard, Extra; Windows and Mac). The download page always has the newest of each:
 https://rojakiisme.github.io/stagio/
 
+## 2026-11-25 · Windows Lite 1.7.1 · Standard 1.8.1 · Extra 1.9.1 · Mac 1.7.1 · 1.7.1 · 1.8.1
+
+- The project moved with its GitHub account to **Rojakiisme**: the download page and guide are now
+  https://rojakiisme.github.io/stagio/ and the source https://github.com/Rojakiisme/stagio. The
+  Bluetooth code, the update notice and the About text use the new addresses. Older versions
+  still point to the old page address, which no longer works: update to this version.
+- The Bluetooth remote page keeps working from the phone's copy when the site answers with an
+  error, not only when there is no connection.
+
 ## 2026-11-25 · Windows Lite 1.7 · Standard 1.8 · Extra 1.9 · Mac 1.7 · 1.7 · 1.8
 
 - **Signed requests**: a phone's key no longer travels on the network. The QR code's pairing code
